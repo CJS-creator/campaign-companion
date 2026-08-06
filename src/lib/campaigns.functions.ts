@@ -1,10 +1,12 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getRequestUrl } from "@tanstack/react-start/server";
 import { z } from "zod";
+import { inspectUrl, hasBlockingIssue } from "./link-safety";
 
 const sendInput = z.object({ campaignId: z.string().uuid() });
 
 export const FROM_ADDRESS = "onboarding@resend.dev";
+
 
 export const sendCampaign = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => sendInput.parse(data))
