@@ -142,3 +142,29 @@
     color: var(--color-foreground);
   }
 }
+
+.prose-editor h2 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin: 0.75rem 0 0.375rem;
+}
+
+.prose-editor p {
+  margin: 0 0 0.625rem;
+}
+
+.prose-editor ul {
+  list-style: disc;
+  padding-left: 1.25rem;
+  margin: 0 0 0.625rem;
+}
+
+.prose-editor a {
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+
+.prose-editor[contenteditable]:empty::before {
+  content: attr(data-placeholder);
+  color: var(--color-muted-foreground);
+}
