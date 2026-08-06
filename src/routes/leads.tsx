@@ -132,6 +132,9 @@ function LeadsPage() {
         </form>
       </Card>
 
+      <LeadImport />
+
+
       <Card className="overflow-hidden p-0">
         <table className="w-full text-sm">
           <thead className="border-b border-border bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
