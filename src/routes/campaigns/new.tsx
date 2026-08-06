@@ -68,11 +68,8 @@ function ComposerPage() {
     return null;
   };
 
-  const handle = (mode: "draft" | "send") =>
-    useMutationHandler(mode, save, qc, navigate, recipients);
-
-  const draftMutation = handle("draft");
-  const sendMutation = handle("send");
+  const draftMutation = useMutationHandler("draft", save, qc, navigate, recipients);
+  const sendMutation = useMutationHandler("send", save, qc, navigate, recipients);
 
   return (
     <div className="space-y-8">
