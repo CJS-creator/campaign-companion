@@ -196,7 +196,7 @@ function ComposerPage() {
           <RichTextEditor value={bodyHtml} onChange={setBodyHtml} />
         </div>
 
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Button
             variant="outline"
             disabled={draftMutation.isPending || sendMutation.isPending}
@@ -205,12 +205,23 @@ function ComposerPage() {
             Save draft
           </Button>
           <Button
-            disabled={sendMutation.isPending || draftMutation.isPending || recipients === 0}
+            disabled={
+              sendMutation.isPending ||
+              draftMutation.isPending ||
+              recipients === 0 ||
+              (offerUrl.trim().length > 0 && !linkVerified)
+            }
             onClick={() => sendMutation.mutate()}
           >
             {sendMutation.isPending ? "Sending…" : `Send to ${recipients}`}
           </Button>
+          {offerUrl.trim().length > 0 && !linkVerified && (
+            <span className="text-xs text-muted-foreground">
+              Verify the offer link before sending.
+            </span>
+          )}
         </div>
+
       </Card>
     </div>
   );
