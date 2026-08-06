@@ -10,6 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Card } from "@/components/ui/card";
+import { LeadImport } from "@/components/LeadImport";
+
 
 export const Route = createFileRoute("/leads")({
   head: () => ({
@@ -129,6 +131,9 @@ function LeadsPage() {
           </Button>
         </form>
       </Card>
+
+      <LeadImport />
+
 
       <Card className="overflow-hidden p-0">
         <table className="w-full text-sm">
