@@ -28,6 +28,23 @@ export const sendCampaign = createServerFn({ method: "POST" })
     if (!campaign) throw new Error("Campaign not found.");
     if (campaign.status === "sent") throw new Error("This campaign has already been sent.");
 
+    // Security gate: every URL that goes out must pass the link checks.
+    const urlsToCheck = new Set<string>();
+    if (campaign.offer_url) urlsToCheck.add(campaign.offer_url);
+    for (const match of (campaign.body_html || "").matchAll(/href\s*=\s*["']([^"']+)["']/gi)) {
+      const href = match[1]?.trim();
+      if (href && !href.startsWith("{{") && !href.startsWith("mailto:")) urlsToCheck.add(href);
+    }
+    for (const candidate of urlsToCheck) {
+      const { issues } = inspectUrl(candidate);
+      if (hasBlockingIssue(issues)) {
+        throw new Error(
+          `Unsafe link blocked (${candidate}): ${issues.find((i) => i.level === "error")?.message}`,
+        );
+      }
+    }
+
+
     const { data: leads, error: leadsError } = await supabaseAdmin
       .from("leads")
       .select("id, email, name")
