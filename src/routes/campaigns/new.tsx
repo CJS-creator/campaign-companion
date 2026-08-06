@@ -53,6 +53,33 @@ function ComposerPage() {
   const [offerUrl, setOfferUrl] = useState("");
   const [bodyHtml, setBodyHtml] = useState("");
 
+  const check = useServerFn(verifyLink);
+  const [linkResult, setLinkResult] = useState<LinkCheckResult | null>(null);
+  const [checking, setChecking] = useState(false);
+  const linkVerified = linkResult?.ok === true;
+
+  // Any edit to the offer link invalidates a previous verification.
+  useEffect(() => {
+    setLinkResult(null);
+  }, [offerUrl]);
+
+  const runCheck = async () => {
+    if (!offerUrl.trim()) return;
+    setChecking(true);
+    try {
+      const result = await check({ data: { url: offerUrl } });
+      setLinkResult(result);
+      if (result.ok) toast.success("Link looks safe");
+      else toast.error("Link failed the safety check");
+    } catch {
+      toast.error("Couldn't run the link check");
+    } finally {
+      setChecking(false);
+    }
+  };
+
+
+
   const save = async (status: "draft" | "send") => {
     const parsed = schema.parse({ subject, offerUrl, bodyHtml });
     const { data, error } = await supabase
