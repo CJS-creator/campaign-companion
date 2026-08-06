@@ -10,33 +10,102 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as LeadsRouteImport } from './routes/leads'
+import { Route as CampaignsIdRouteImport } from './routes/campaigns/$id'
+import { Route as CampaignsNewRouteImport } from './routes/campaigns/new'
+import { Route as TrackClickRouteImport } from './routes/track/click'
+import { Route as TrackOpenRouteImport } from './routes/track/open'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LeadsRoute = LeadsRouteImport.update({
+  id: '/leads',
+  path: '/leads',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CampaignsIdRoute = CampaignsIdRouteImport.update({
+  id: '/campaigns/$id',
+  path: '/campaigns/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CampaignsNewRoute = CampaignsNewRouteImport.update({
+  id: '/campaigns/new',
+  path: '/campaigns/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TrackClickRoute = TrackClickRouteImport.update({
+  id: '/track/click',
+  path: '/track/click',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TrackOpenRoute = TrackOpenRouteImport.update({
+  id: '/track/open',
+  path: '/track/open',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/leads': typeof LeadsRoute
+  '/campaigns/$id': typeof CampaignsIdRoute
+  '/campaigns/new': typeof CampaignsNewRoute
+  '/track/click': typeof TrackClickRoute
+  '/track/open': typeof TrackOpenRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/leads': typeof LeadsRoute
+  '/campaigns/$id': typeof CampaignsIdRoute
+  '/campaigns/new': typeof CampaignsNewRoute
+  '/track/click': typeof TrackClickRoute
+  '/track/open': typeof TrackOpenRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/leads': typeof LeadsRoute
+  '/campaigns/$id': typeof CampaignsIdRoute
+  '/campaigns/new': typeof CampaignsNewRoute
+  '/track/click': typeof TrackClickRoute
+  '/track/open': typeof TrackOpenRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/leads'
+    | '/campaigns/$id'
+    | '/campaigns/new'
+    | '/track/click'
+    | '/track/open'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/leads'
+    | '/campaigns/$id'
+    | '/campaigns/new'
+    | '/track/click'
+    | '/track/open'
+  id:
+    | '__root__'
+    | '/'
+    | '/leads'
+    | '/campaigns/$id'
+    | '/campaigns/new'
+    | '/track/click'
+    | '/track/open'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  LeadsRoute: typeof LeadsRoute
+  CampaignsIdRoute: typeof CampaignsIdRoute
+  CampaignsNewRoute: typeof CampaignsNewRoute
+  TrackClickRoute: typeof TrackClickRoute
+  TrackOpenRoute: typeof TrackOpenRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,22 +117,52 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/leads': {
+      id: '/leads'
+      path: '/leads'
+      fullPath: '/leads'
+      preLoaderRoute: typeof LeadsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/campaigns/$id': {
+      id: '/campaigns/$id'
+      path: '/campaigns/$id'
+      fullPath: '/campaigns/$id'
+      preLoaderRoute: typeof CampaignsIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/campaigns/new': {
+      id: '/campaigns/new'
+      path: '/campaigns/new'
+      fullPath: '/campaigns/new'
+      preLoaderRoute: typeof CampaignsNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/track/click': {
+      id: '/track/click'
+      path: '/track/click'
+      fullPath: '/track/click'
+      preLoaderRoute: typeof TrackClickRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/track/open': {
+      id: '/track/open'
+      path: '/track/open'
+      fullPath: '/track/open'
+      preLoaderRoute: typeof TrackOpenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  LeadsRoute: LeadsRoute,
+  CampaignsIdRoute: CampaignsIdRoute,
+  CampaignsNewRoute: CampaignsNewRoute,
+  TrackClickRoute: TrackClickRoute,
+  TrackOpenRoute: TrackOpenRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

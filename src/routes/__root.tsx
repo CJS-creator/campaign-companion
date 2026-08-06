@@ -10,6 +10,7 @@ import {
 import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
+import { Toaster } from "../components/ui/sonner";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 
 function NotFoundComponent() {
@@ -77,14 +78,20 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Lovable Generated Project" },
-      { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Lovable Generated Project" },
+      { title: "Postmark Studio — Email campaigns" },
+      {
+        name: "description",
+        content:
+          "Collect leads, compose campaigns and track opens and clicks in one simple tool.",
+      },
+      { property: "og:title", content: "Postmark Studio — Email campaigns" },
+      {
+        property: "og:description",
+        content:
+          "Collect leads, compose campaigns and track opens and clicks in one simple tool.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:site", content: "@Lovable" },
     ],
     links: [
       {
@@ -114,13 +121,44 @@ function RootShell({ children }: { children: ReactNode }) {
   );
 }
 
+const navItems = [
+  { to: "/", label: "Dashboard" },
+  { to: "/leads", label: "Leads" },
+  { to: "/campaigns/new", label: "Compose" },
+] as const;
+
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
 
   return (
     <QueryClientProvider client={queryClient}>
-      {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-      <Outlet />
+      <div className="min-h-screen bg-background">
+        <header className="border-b border-border">
+          <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-6 px-6 py-4">
+            <Link to="/" className="text-sm font-semibold tracking-tight">
+              Postmark Studio
+            </Link>
+            <nav className="flex items-center gap-1 text-sm">
+              {navItems.map((item) => (
+                <Link
+                  key={item.to}
+                  to={item.to}
+                  activeOptions={{ exact: item.to === "/" }}
+                  className="rounded-md px-3 py-1.5 text-muted-foreground transition-colors hover:text-foreground"
+                  activeProps={{ className: "bg-secondary text-foreground" }}
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </nav>
+          </div>
+        </header>
+        <main className="mx-auto max-w-5xl px-6 py-10">
+          {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
+          <Outlet />
+        </main>
+      </div>
+      <Toaster />
     </QueryClientProvider>
   );
 }
