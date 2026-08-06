@@ -1,17 +1,20 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { z } from "zod";
+import { ShieldCheck, ShieldAlert, Loader2, TriangleAlert } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { leadsQuery } from "@/lib/data";
 import { sendCampaign } from "@/lib/campaigns.functions";
+import { verifyLink, type LinkCheckResult } from "@/lib/links.functions";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
+
 
 export const Route = createFileRoute("/campaigns/new")({
   head: () => ({
@@ -49,6 +52,33 @@ function ComposerPage() {
   const [subject, setSubject] = useState("");
   const [offerUrl, setOfferUrl] = useState("");
   const [bodyHtml, setBodyHtml] = useState("");
+
+  const check = useServerFn(verifyLink);
+  const [linkResult, setLinkResult] = useState<LinkCheckResult | null>(null);
+  const [checking, setChecking] = useState(false);
+  const linkVerified = linkResult?.ok === true;
+
+  // Any edit to the offer link invalidates a previous verification.
+  useEffect(() => {
+    setLinkResult(null);
+  }, [offerUrl]);
+
+  const runCheck = async () => {
+    if (!offerUrl.trim()) return;
+    setChecking(true);
+    try {
+      const result = await check({ data: { url: offerUrl } });
+      setLinkResult(result);
+      if (result.ok) toast.success("Link looks safe");
+      else toast.error("Link failed the safety check");
+    } catch {
+      toast.error("Couldn't run the link check");
+    } finally {
+      setChecking(false);
+    }
+  };
+
+
 
   const save = async (status: "draft" | "send") => {
     const parsed = schema.parse({ subject, offerUrl, bodyHtml });
@@ -94,25 +124,79 @@ function ComposerPage() {
 
         <div className="space-y-1.5">
           <Label htmlFor="offer">Offer link</Label>
-          <Input
-            id="offer"
-            value={offerUrl}
-            placeholder="https://example.com/offer"
-            onChange={(e) => setOfferUrl(e.target.value)}
-          />
+          <div className="flex gap-2">
+            <Input
+              id="offer"
+              value={offerUrl}
+              placeholder="https://example.com/offer"
+              onChange={(e) => setOfferUrl(e.target.value)}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!offerUrl.trim() || checking}
+              onClick={runCheck}
+            >
+              {checking ? <Loader2 className="size-4 animate-spin" /> : "Check link"}
+            </Button>
+          </div>
           <p className="text-xs text-muted-foreground">
             Use the toolbar to drop a{" "}
             <code className="rounded bg-muted px-1 py-0.5">{"{{offer_link}}"}</code>{" "}
             placeholder into the body. Clicks are tracked before redirecting here.
           </p>
+
+          {linkResult && (
+            <div
+              className={`mt-2 rounded-md border p-3 text-sm ${
+                linkResult.ok
+                  ? "border-emerald-500/40 bg-emerald-500/5"
+                  : "border-destructive/40 bg-destructive/5"
+              }`}
+            >
+              <div className="flex items-center gap-2 font-medium">
+                {linkResult.ok ? (
+                  <ShieldCheck className="size-4 text-emerald-600" />
+                ) : (
+                  <ShieldAlert className="size-4 text-destructive" />
+                )}
+                {linkResult.ok ? "Secure and reachable" : "This link can't be sent"}
+                {linkResult.status !== null && (
+                  <span className="text-xs font-normal text-muted-foreground">
+                    HTTP {linkResult.status}
+                  </span>
+                )}
+              </div>
+              {linkResult.redirected && linkResult.finalUrl && (
+                <p className="mt-1 break-all text-xs text-muted-foreground">
+                  Resolves to {linkResult.finalUrl}
+                </p>
+              )}
+              {linkResult.issues.length > 0 && (
+                <ul className="mt-2 space-y-1">
+                  {linkResult.issues.map((issue, i) => (
+                    <li key={i} className="flex items-start gap-2 text-xs">
+                      <TriangleAlert
+                        className={`mt-0.5 size-3.5 shrink-0 ${
+                          issue.level === "error" ? "text-destructive" : "text-amber-600"
+                        }`}
+                      />
+                      <span>{issue.message}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
         </div>
+
 
         <div className="space-y-1.5">
           <Label>Body</Label>
           <RichTextEditor value={bodyHtml} onChange={setBodyHtml} />
         </div>
 
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Button
             variant="outline"
             disabled={draftMutation.isPending || sendMutation.isPending}
@@ -121,12 +205,23 @@ function ComposerPage() {
             Save draft
           </Button>
           <Button
-            disabled={sendMutation.isPending || draftMutation.isPending || recipients === 0}
+            disabled={
+              sendMutation.isPending ||
+              draftMutation.isPending ||
+              recipients === 0 ||
+              (offerUrl.trim().length > 0 && !linkVerified)
+            }
             onClick={() => sendMutation.mutate()}
           >
             {sendMutation.isPending ? "Sending…" : `Send to ${recipients}`}
           </Button>
+          {offerUrl.trim().length > 0 && !linkVerified && (
+            <span className="text-xs text-muted-foreground">
+              Verify the offer link before sending.
+            </span>
+          )}
         </div>
+
       </Card>
     </div>
   );
