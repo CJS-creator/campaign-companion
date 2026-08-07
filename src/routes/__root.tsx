@@ -168,6 +168,7 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
+      <BackgroundHealthCheck />
       <div className="min-h-screen bg-background">
         <header className="border-b border-border">
           <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-6 px-6 py-4">
