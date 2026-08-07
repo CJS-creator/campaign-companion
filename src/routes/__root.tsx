@@ -6,6 +6,7 @@ import {
   redirect,
   useNavigate,
   useRouter,
+  useRouterState,
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
@@ -142,11 +143,20 @@ const navItems = [
 // Periodic background health check & queue worker tick. Must live INSIDE the
 // QueryClientProvider — calling useQuery in RootComponent crashed SSR.
 function BackgroundHealthCheck() {
+  const location = useRouterState({ select: (s) => s.location.pathname });
+  const enabled = !location.startsWith("/login") && !location.startsWith("/track");
+
   useQuery({
     queryKey: ["backgroundHealthCheck"],
+    enabled,
+    retry: false,
     queryFn: async () => {
-      const { runHealthCheck } = await import("../lib/diagnostics.functions");
-      return runHealthCheck();
+      try {
+        const { runHealthCheck } = await import("../lib/diagnostics.functions");
+        return await runHealthCheck();
+      } catch {
+        return null;
+      }
     },
     refetchInterval: 30000,
     refetchOnWindowFocus: true,
