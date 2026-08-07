@@ -202,7 +202,7 @@ export const previewLeadImport = createServerFn({ method: "POST" })
         dbDuplicates.push({
           email: r.email,
           name: r.name,
-          existingName: existingMap.get(r.email)?.name,
+          existingName: existingMap.get(r.email)?.name ?? null,
         });
       } else {
         newLeads.push({ email: r.email, name: r.name });

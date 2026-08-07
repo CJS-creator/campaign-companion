@@ -807,7 +807,8 @@ export const checkAndRepairQueue = createServerFn({ method: "POST" })
 
     if (data.campaignId) resetQuery = resetQuery.eq("campaign_id", data.campaignId);
 
-    const { count: resetCount } = await resetQuery.select("id", { count: "exact", head: true });
+    const { data: resetRows } = await resetQuery.select("id");
+    const resetCount = resetRows?.length ?? 0;
 
     // 2. Trigger worker
     if (apiKeyConfigured) {
