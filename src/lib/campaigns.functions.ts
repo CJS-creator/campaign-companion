@@ -414,6 +414,9 @@ export const sendCampaign = createServerFn({ method: "POST" })
 export const scheduleCampaign = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => scheduleInput.parse(data))
   .handler(async ({ data }) => {
+    const { assertOwner } = await import("./owner-guard.server");
+    assertOwner();
+
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const { data: campaign } = await supabaseAdmin
@@ -455,6 +458,9 @@ export const scheduleCampaign = createServerFn({ method: "POST" })
 export const retryFailedSends = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => sendInput.parse(data))
   .handler(async ({ data }) => {
+    const { assertOwner } = await import("./owner-guard.server");
+    assertOwner();
+
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const origin = new URL(getRequestUrl()).origin;
 
@@ -487,6 +493,9 @@ export const retryFailedSends = createServerFn({ method: "POST" })
 export const retrySingleSend = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => retrySendInput.parse(data))
   .handler(async ({ data }) => {
+    const { assertOwner } = await import("./owner-guard.server");
+    assertOwner();
+
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const origin = new URL(getRequestUrl()).origin;
 
