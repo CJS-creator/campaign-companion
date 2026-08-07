@@ -27,8 +27,20 @@ export const Route = createFileRoute("/track/unsubscribe")({
           if (send) {
             await supabaseAdmin
               .from("leads")
-              .update({ subscribed: false })
+              .update({
+                subscribed: false,
+                suppression_status: "unsubscribed",
+                suppression_reason: "Recipient used the unsubscribe link",
+                suppressed_at: new Date().toISOString(),
+              })
               .eq("id", send.lead_id);
+
+            await supabaseAdmin.from("events").insert({
+              send_id: send.id,
+              lead_id: send.lead_id,
+              event_type: "unsubscribed",
+              metadata: { source: "unsubscribe_link" },
+            });
           }
         } catch (err) {
           console.error("Unsubscribe error:", err);
@@ -72,8 +84,20 @@ export const Route = createFileRoute("/track/unsubscribe")({
           if (send) {
             await supabaseAdmin
               .from("leads")
-              .update({ subscribed: false })
+              .update({
+                subscribed: false,
+                suppression_status: "unsubscribed",
+                suppression_reason: "Recipient used the unsubscribe link",
+                suppressed_at: new Date().toISOString(),
+              })
               .eq("id", send.lead_id);
+
+            await supabaseAdmin.from("events").insert({
+              send_id: send.id,
+              lead_id: send.lead_id,
+              event_type: "unsubscribed",
+              metadata: { source: "unsubscribe_link" },
+            });
           }
         } catch (err) {
           console.error("RFC 8058 Unsubscribe POST error:", err);

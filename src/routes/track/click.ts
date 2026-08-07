@@ -17,7 +17,7 @@ export const Route = createFileRoute("/track/click")({
             const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
             const { data: send } = await supabaseAdmin
               .from("sends")
-              .select("id, campaign_id")
+              .select("id, campaign_id, lead_id")
               .eq("id", sendId)
               .maybeSingle();
 
@@ -27,6 +27,14 @@ export const Route = createFileRoute("/track/click")({
                 .update({ clicked_at: new Date().toISOString() })
                 .eq("id", send.id)
                 .is("clicked_at", null);
+
+              await supabaseAdmin.from("events").insert({
+                send_id: send.id,
+                lead_id: send.lead_id,
+                campaign_id: send.campaign_id,
+                event_type: "clicked",
+                metadata: { source: "tracked_link" },
+              });
 
               const { data: campaign } = await supabaseAdmin
                 .from("campaigns")

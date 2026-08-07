@@ -26,11 +26,27 @@ export const Route = createFileRoute("/track/open")({
 
         try {
           const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-          await supabaseAdmin
+          const { data: send } = await supabaseAdmin
             .from("sends")
-            .update({ opened_at: new Date().toISOString() })
+            .select("id, lead_id, campaign_id, opened_at")
             .eq("id", sendId)
-            .is("opened_at", null);
+            .maybeSingle();
+
+          if (send) {
+            await supabaseAdmin
+              .from("sends")
+              .update({ opened_at: new Date().toISOString() })
+              .eq("id", send.id)
+              .is("opened_at", null);
+
+            await supabaseAdmin.from("events").insert({
+              send_id: send.id,
+              lead_id: send.lead_id,
+              campaign_id: send.campaign_id,
+              event_type: "opened",
+              metadata: { source: "tracking_pixel", first_open: !send.opened_at },
+            });
+          }
         } catch (err) {
           console.error("track/open failed", err);
         }
