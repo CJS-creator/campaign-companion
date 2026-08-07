@@ -249,12 +249,20 @@ export async function runQueueWorker(targetCampaignId?: string, origin?: string)
     };
 
     for (let i = 0; i < sends.length; i += BATCH_SIZE) {
-      const batch = sends.slice(i, i + BATCH_SIZE);
+      const allowed = Math.max(0, Math.min(remainingToday, remainingMonth));
+      if (allowed <= 0) {
+        console.warn("Worker: sending cap reached mid-run, remaining sends stay queued.");
+        break;
+      }
+      const batch = sends.slice(i, i + Math.min(BATCH_SIZE, allowed));
       await Promise.all(batch.map(deliverOne));
+      remainingToday -= batch.length;
+      remainingMonth -= batch.length;
       if (i + BATCH_SIZE < sends.length) {
         await wait(adaptivePauseMs);
       }
     }
+
 
     // Final check for completion of this campaign
     const { data: remainingUnfinished } = await supabaseAdmin
