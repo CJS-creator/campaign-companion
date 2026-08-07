@@ -11,10 +11,14 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as LeadsRouteImport } from './routes/leads'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as CampaignsIdRouteImport } from './routes/campaigns/$id'
 import { Route as CampaignsNewRouteImport } from './routes/campaigns/new'
 import { Route as TrackClickRouteImport } from './routes/track/click'
 import { Route as TrackOpenRouteImport } from './routes/track/open'
+import { Route as TrackUnsubscribeRouteImport } from './routes/track/unsubscribe'
+import { Route as ApiWebhooksResendRouteImport } from './routes/api/webhooks/resend'
 import { Route as ApiWorkerProcessQueueRouteImport } from './routes/api/worker/process-queue'
 
 const IndexRoute = IndexRouteImport.update({
@@ -25,6 +29,16 @@ const IndexRoute = IndexRouteImport.update({
 const LeadsRoute = LeadsRouteImport.update({
   id: '/leads',
   path: '/leads',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CampaignsIdRoute = CampaignsIdRouteImport.update({
@@ -47,6 +61,16 @@ const TrackOpenRoute = TrackOpenRouteImport.update({
   path: '/track/open',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TrackUnsubscribeRoute = TrackUnsubscribeRouteImport.update({
+  id: '/track/unsubscribe',
+  path: '/track/unsubscribe',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiWebhooksResendRoute = ApiWebhooksResendRouteImport.update({
+  id: '/api/webhooks/resend',
+  path: '/api/webhooks/resend',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiWorkerProcessQueueRoute = ApiWorkerProcessQueueRouteImport.update({
   id: '/api/worker/process-queue',
   path: '/api/worker/process-queue',
@@ -56,29 +80,41 @@ const ApiWorkerProcessQueueRoute = ApiWorkerProcessQueueRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/leads': typeof LeadsRoute
+  '/login': typeof LoginRoute
+  '/settings': typeof SettingsRoute
   '/campaigns/$id': typeof CampaignsIdRoute
   '/campaigns/new': typeof CampaignsNewRoute
   '/track/click': typeof TrackClickRoute
   '/track/open': typeof TrackOpenRoute
+  '/track/unsubscribe': typeof TrackUnsubscribeRoute
+  '/api/webhooks/resend': typeof ApiWebhooksResendRoute
   '/api/worker/process-queue': typeof ApiWorkerProcessQueueRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/leads': typeof LeadsRoute
+  '/login': typeof LoginRoute
+  '/settings': typeof SettingsRoute
   '/campaigns/$id': typeof CampaignsIdRoute
   '/campaigns/new': typeof CampaignsNewRoute
   '/track/click': typeof TrackClickRoute
   '/track/open': typeof TrackOpenRoute
+  '/track/unsubscribe': typeof TrackUnsubscribeRoute
+  '/api/webhooks/resend': typeof ApiWebhooksResendRoute
   '/api/worker/process-queue': typeof ApiWorkerProcessQueueRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/leads': typeof LeadsRoute
+  '/login': typeof LoginRoute
+  '/settings': typeof SettingsRoute
   '/campaigns/$id': typeof CampaignsIdRoute
   '/campaigns/new': typeof CampaignsNewRoute
   '/track/click': typeof TrackClickRoute
   '/track/open': typeof TrackOpenRoute
+  '/track/unsubscribe': typeof TrackUnsubscribeRoute
+  '/api/webhooks/resend': typeof ApiWebhooksResendRoute
   '/api/worker/process-queue': typeof ApiWorkerProcessQueueRoute
 }
 export interface FileRouteTypes {
@@ -86,38 +122,54 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/leads'
+    | '/login'
+    | '/settings'
     | '/campaigns/$id'
     | '/campaigns/new'
     | '/track/click'
     | '/track/open'
+    | '/track/unsubscribe'
+    | '/api/webhooks/resend'
     | '/api/worker/process-queue'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/leads'
+    | '/login'
+    | '/settings'
     | '/campaigns/$id'
     | '/campaigns/new'
     | '/track/click'
     | '/track/open'
+    | '/track/unsubscribe'
+    | '/api/webhooks/resend'
     | '/api/worker/process-queue'
   id:
     | '__root__'
     | '/'
     | '/leads'
+    | '/login'
+    | '/settings'
     | '/campaigns/$id'
     | '/campaigns/new'
     | '/track/click'
     | '/track/open'
+    | '/track/unsubscribe'
+    | '/api/webhooks/resend'
     | '/api/worker/process-queue'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LeadsRoute: typeof LeadsRoute
+  LoginRoute: typeof LoginRoute
+  SettingsRoute: typeof SettingsRoute
   CampaignsIdRoute: typeof CampaignsIdRoute
   CampaignsNewRoute: typeof CampaignsNewRoute
   TrackClickRoute: typeof TrackClickRoute
   TrackOpenRoute: typeof TrackOpenRoute
+  TrackUnsubscribeRoute: typeof TrackUnsubscribeRoute
+  ApiWebhooksResendRoute: typeof ApiWebhooksResendRoute
   ApiWorkerProcessQueueRoute: typeof ApiWorkerProcessQueueRoute
 }
 
@@ -135,6 +187,20 @@ declare module '@tanstack/react-router' {
       path: '/leads'
       fullPath: '/leads'
       preLoaderRoute: typeof LeadsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/campaigns/$id': {
@@ -165,6 +231,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TrackOpenRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/track/unsubscribe': {
+      id: '/track/unsubscribe'
+      path: '/track/unsubscribe'
+      fullPath: '/track/unsubscribe'
+      preLoaderRoute: typeof TrackUnsubscribeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/webhooks/resend': {
+      id: '/api/webhooks/resend'
+      path: '/api/webhooks/resend'
+      fullPath: '/api/webhooks/resend'
+      preLoaderRoute: typeof ApiWebhooksResendRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/worker/process-queue': {
       id: '/api/worker/process-queue'
       path: '/api/worker/process-queue'
@@ -178,10 +258,14 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LeadsRoute: LeadsRoute,
+  LoginRoute: LoginRoute,
+  SettingsRoute: SettingsRoute,
   CampaignsIdRoute: CampaignsIdRoute,
   CampaignsNewRoute: CampaignsNewRoute,
   TrackClickRoute: TrackClickRoute,
   TrackOpenRoute: TrackOpenRoute,
+  TrackUnsubscribeRoute: TrackUnsubscribeRoute,
+  ApiWebhooksResendRoute: ApiWebhooksResendRoute,
   ApiWorkerProcessQueueRoute: ApiWorkerProcessQueueRoute,
 }
 export const routeTree = rootRouteImport

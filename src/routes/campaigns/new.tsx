@@ -4,18 +4,19 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { z } from "zod";
-import { ShieldCheck, ShieldAlert, Loader2, TriangleAlert, Tag } from "lucide-react";
+import { ShieldCheck, ShieldAlert, Loader2, TriangleAlert, Tag, Clock, Calendar, Send } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { leadsQuery, campaignQuery } from "@/lib/data";
-import { sendCampaign } from "@/lib/campaigns.functions";
+import { sendCampaign, scheduleCampaign } from "@/lib/campaigns.functions";
+import { getSettings } from "@/lib/settings.functions";
 import { verifyLink, type LinkCheckResult } from "@/lib/links.functions";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { CampaignPreview } from "@/components/CampaignPreview";
+import { PreSendChecklist } from "@/components/PreSendChecklist";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
-
 
 export const Route = createFileRoute("/campaigns/new")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -51,12 +52,21 @@ function ComposerPage() {
   const searchParams = useSearch({ from: "/campaigns/new" });
   const qc = useQueryClient();
   const send = useServerFn(sendCampaign);
+  const schedule = useServerFn(scheduleCampaign);
+
+  const { data: settings } = useQuery({
+    queryKey: ["settings"],
+    queryFn: () => getSettings(),
+  });
+
   const { data: leads = [] } = useQuery(leadsQuery);
   const recipients = leads.filter((l) => l.subscribed).length;
 
   const [subject, setSubject] = useState("");
   const [offerUrl, setOfferUrl] = useState("");
   const [bodyHtml, setBodyHtml] = useState("");
+  const [scheduledFor, setScheduledFor] = useState("");
+  const [isScheduling, setIsScheduling] = useState(false);
 
   const cloneId = searchParams.clone;
   const { data: cloneSource } = useQuery({
@@ -76,9 +86,8 @@ function ComposerPage() {
   const check = useServerFn(verifyLink);
   const [linkResult, setLinkResult] = useState<LinkCheckResult | null>(null);
   const [checking, setChecking] = useState(false);
-  const linkVerified = linkResult?.ok === true;
+  const linkVerified = offerUrl.trim().length === 0 || linkResult?.ok === true;
 
-  // Any edit to the offer link invalidates a previous verification.
   useEffect(() => {
     setLinkResult(null);
   }, [offerUrl]);
@@ -103,18 +112,23 @@ function ComposerPage() {
     toast.success(`Inserted ${tag}`);
   };
 
-  const save = async (status: "draft" | "send") => {
+  const save = async (status: "draft" | "send" | "schedule") => {
     const parsed = schema.parse({ subject, offerUrl, bodyHtml });
+    const plainText = parsed.bodyHtml.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+
     const { data, error } = await supabase
       .from("campaigns")
       .insert({
         subject: parsed.subject,
         body_html: parsed.bodyHtml,
+        body_text: plainText,
         offer_url: parsed.offerUrl || null,
       })
       .select("id")
       .single();
+
     if (error) throw new Error(error.message);
+
     if (status === "send") {
       void send({ data: { campaignId: data.id as string } })
         .then(() => {
@@ -125,12 +139,20 @@ function ComposerPage() {
           toast.error(err instanceof Error ? err.message : "Campaign delivery could not start");
           qc.invalidateQueries({ queryKey: ["campaigns"] });
         });
+    } else if (status === "schedule" && scheduledFor) {
+      const isoDate = new Date(scheduledFor).toISOString();
+      await schedule({ data: { campaignId: data.id as string, scheduledFor: isoDate } });
+      qc.invalidateQueries({ queryKey: ["campaigns"] });
     }
+
     return { campaignId: data.id as string, started: status === "send" };
   };
 
   const draftMutation = useMutationHandler("draft", save, qc, navigate, recipients);
   const sendMutation = useMutationHandler("send", save, qc, navigate, recipients);
+  const scheduleMutation = useMutationHandler("schedule", save, qc, navigate, recipients);
+
+  const senderConfigured = Boolean(settings?.business_name && settings?.postal_address);
 
   return (
     <div className="space-y-8">
@@ -242,30 +264,74 @@ function ComposerPage() {
             <RichTextEditor value={bodyHtml} onChange={setBodyHtml} />
           </div>
 
+          <PreSendChecklist
+            recipientCount={recipients}
+            dailyCap={settings?.daily_cap || 100}
+            monthlyCap={settings?.monthly_cap || 3000}
+            senderConfigured={senderConfigured}
+            linkVerified={linkVerified}
+            hasPlainText={Boolean(bodyHtml.trim())}
+            scheduledTime={isScheduling ? scheduledFor : undefined}
+          />
+
+          {isScheduling && (
+            <div className="space-y-2 rounded-md border p-3 bg-muted/20">
+              <Label htmlFor="scheduleTime" className="flex items-center gap-1.5 text-xs font-medium">
+                <Calendar className="size-3.5 text-primary" /> Select Send Date & Time (India Standard Time - IST)
+              </Label>
+              <Input
+                id="scheduleTime"
+                type="datetime-local"
+                value={scheduledFor}
+                onChange={(e) => setScheduledFor(e.target.value)}
+              />
+            </div>
+          )}
+
           <div className="flex flex-wrap items-center gap-3 pt-2">
             <Button
               variant="outline"
-              disabled={draftMutation.isPending || sendMutation.isPending}
+              disabled={draftMutation.isPending || sendMutation.isPending || scheduleMutation.isPending}
               onClick={() => draftMutation.mutate()}
             >
               Save draft
             </Button>
+
+            {!isScheduling ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsScheduling(true)}
+              >
+                <Clock className="size-4 mr-1.5" /> Schedule…
+              </Button>
+            ) : (
+              <Button
+                disabled={
+                  scheduleMutation.isPending ||
+                  !scheduledFor ||
+                  recipients === 0 ||
+                  !linkVerified
+                }
+                onClick={() => scheduleMutation.mutate()}
+              >
+                <Calendar className="size-4 mr-1.5" /> Schedule for IST
+              </Button>
+            )}
+
             <Button
               disabled={
                 sendMutation.isPending ||
                 draftMutation.isPending ||
+                scheduleMutation.isPending ||
                 recipients === 0 ||
-                (offerUrl.trim().length > 0 && !linkVerified)
+                !linkVerified
               }
               onClick={() => sendMutation.mutate()}
             >
-              {sendMutation.isPending ? "Starting…" : `Send to ${recipients}`}
+              <Send className="size-4 mr-1.5" />
+              {sendMutation.isPending ? "Starting…" : `Send to ${recipients} now`}
             </Button>
-            {offerUrl.trim().length > 0 && !linkVerified && (
-              <span className="text-xs text-muted-foreground">
-                Verify the offer link before sending.
-              </span>
-            )}
           </div>
         </Card>
 
@@ -276,8 +342,8 @@ function ComposerPage() {
 }
 
 function useMutationHandler(
-  mode: "draft" | "send",
-  save: (status: "draft" | "send") => Promise<{ campaignId: string; started: boolean }>,
+  mode: "draft" | "send" | "schedule",
+  save: (status: "draft" | "send" | "schedule") => Promise<{ campaignId: string; started: boolean }>,
   qc: ReturnType<typeof useQueryClient>,
   navigate: ReturnType<typeof useNavigate>,
   recipients: number,
@@ -289,6 +355,9 @@ function useMutationHandler(
       qc.invalidateQueries({ queryKey: ["sends"] });
       if (mode === "draft") {
         toast.success("Draft saved");
+        navigate({ to: "/" });
+      } else if (mode === "schedule") {
+        toast.success("Campaign scheduled successfully!");
         navigate({ to: "/" });
       } else {
         toast.success(`Sending to ${recipients} recipients`);
@@ -306,3 +375,4 @@ function useMutationHandler(
     },
   });
 }
+

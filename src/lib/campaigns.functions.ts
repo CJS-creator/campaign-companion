@@ -11,6 +11,8 @@ const retrySendInput = z.object({ sendId: z.string().uuid() });
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const MAX_ATTEMPTS = 3;
 
+const scheduleInput = z.object({ campaignId: z.string().uuid(), scheduledFor: z.string() });
+
 /**
  * Core background queue worker loop.
  * Can be triggered asynchronously or via API endpoint.
@@ -25,14 +27,27 @@ export async function runQueueWorker(targetCampaignId?: string, origin?: string)
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const { signSendToken } = await import("./link-safety");
 
+  // Fetch owner settings for footer and throttling
+  const { data: settings } = await supabaseAdmin
+    .from("settings")
+    .select("*")
+    .eq("id", "default")
+    .maybeSingle();
+
+  const businessName = settings?.business_name || "Campaign Companion";
+  const postalAddress = settings?.postal_address || "123 Business Street, Mumbai, MH 400001, India";
+  const supportEmail = settings?.support_email || "support@example.com";
+
   let campaignIds: string[] = [];
   if (targetCampaignId) {
     campaignIds = [targetCampaignId];
   } else {
+    // Process queued, sending, and scheduled campaigns whose scheduled_for time has passed
+    const nowIso = new Date().toISOString();
     const { data: activeCampaigns } = await supabaseAdmin
       .from("campaigns")
-      .select("id")
-      .in("status", ["queued", "sending"]);
+      .select("id, status, scheduled_for")
+      .or(`status.in.(queued,sending),and(status.eq.scheduled,scheduled_for.lte.${nowIso})`);
     campaignIds = (activeCampaigns ?? []).map((c) => c.id);
   }
 
@@ -47,7 +62,7 @@ export async function runQueueWorker(targetCampaignId?: string, origin?: string)
       .eq("id", cid)
       .maybeSingle();
 
-    if (!campaign || campaign.status === "sent") continue;
+    if (!campaign || campaign.status === "completed" || campaign.status === "sent") continue;
 
     // Mark campaign as sending
     await supabaseAdmin.from("campaigns").update({ status: "sending" }).eq("id", cid);
@@ -81,7 +96,7 @@ export async function runQueueWorker(targetCampaignId?: string, origin?: string)
       if (!remainingPending || remainingPending.length === 0) {
         await supabaseAdmin
           .from("campaigns")
-          .update({ status: "sent", sent_at: new Date().toISOString() })
+          .update({ status: "completed", sent_at: new Date().toISOString() })
           .eq("id", cid);
       }
       continue;
@@ -96,7 +111,7 @@ export async function runQueueWorker(targetCampaignId?: string, origin?: string)
     const leadById = new Map((leads ?? []).map((l) => [l.id, l]));
 
     const BATCH_SIZE = 2;
-    let adaptivePauseMs = 1100;
+    let adaptivePauseMs = settings?.throttle_pause_ms || 1100;
 
     const deliverOne = async (send: { id: string; lead_id: string; attempt_count: number }) => {
       const lead = leadById.get(send.lead_id);
@@ -111,6 +126,7 @@ export async function runQueueWorker(targetCampaignId?: string, origin?: string)
       const sig = signSendToken(send.id);
       const clickUrl = `${defaultOrigin}/track/click?send_id=${send.id}&sig=${sig}`;
       const pixelUrl = `${defaultOrigin}/track/open?send_id=${send.id}&sig=${sig}`;
+      const unsubUrl = `${defaultOrigin}/track/unsubscribe?send_id=${send.id}&sig=${sig}`;
 
       let html = campaign.body_html || "";
       html = html.replaceAll("{{offer_link}}", clickUrl);
@@ -118,7 +134,15 @@ export async function runQueueWorker(targetCampaignId?: string, origin?: string)
       if (campaign.offer_url) {
         html = html.replaceAll(campaign.offer_url, clickUrl);
       }
+
+      // Compliant DPDP Footer with Business Name, Address, and Support Email
+      html += `<div style="margin-top:32px;padding-top:16px;border-top:1px solid #e5e7eb;font-size:12px;color:#6b7280;text-align:center;line-height:1.5;">
+        <p>Sent by <strong>${businessName}</strong> · ${postalAddress}</p>
+        <p>Questions? Contact <a href="mailto:${supportEmail}" style="color:#6b7280;">${supportEmail}</a> · <a href="${unsubUrl}" style="color:#6b7280;text-decoration:underline;">Unsubscribe from marketing emails</a></p>
+      </div>`;
       html += `<img src="${pixelUrl}" width="1" height="1" alt="" style="display:block;border:0;" />`;
+
+      const plainText = campaign.body_text || html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 
       const attempt = send.attempt_count + 1;
       await supabaseAdmin
@@ -143,13 +167,24 @@ export async function runQueueWorker(targetCampaignId?: string, origin?: string)
             to: [lead.email],
             subject: campaign.subject,
             html,
+            text: plainText,
+            headers: {
+              "List-Unsubscribe": `<${unsubUrl}>`,
+              "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+            },
           }),
         });
 
         if (res.ok) {
+          const resData = await res.json().catch(() => ({}));
           await supabaseAdmin
             .from("sends")
-            .update({ status: "sent", sent_at: new Date().toISOString(), failure_reason: null })
+            .update({
+              status: "sent",
+              sent_at: new Date().toISOString(),
+              failure_reason: null,
+              provider_message_id: resData.id || null,
+            })
             .eq("id", send.id);
           return;
         }
@@ -164,9 +199,17 @@ export async function runQueueWorker(targetCampaignId?: string, origin?: string)
         const body = (await res.text()).replaceAll(/\s+/g, " ").slice(0, 300);
         const failureReason = `Resend returned ${res.status}${body ? `: ${body}` : ""}`;
 
-        // Hard bounce / invalid email handling
+        // Hard bounce / invalid email handling -> permanently suppress
         if (res.status === 400 || body.toLowerCase().includes("invalid")) {
-          await supabaseAdmin.from("leads").update({ subscribed: false }).eq("id", lead.id);
+          await supabaseAdmin
+            .from("leads")
+            .update({
+              subscribed: false,
+              suppression_status: "bounced",
+              suppression_reason: failureReason,
+              suppressed_at: new Date().toISOString(),
+            })
+            .eq("id", lead.id);
         }
 
         await supabaseAdmin
@@ -200,12 +243,11 @@ export async function runQueueWorker(targetCampaignId?: string, origin?: string)
     if (!remainingUnfinished || remainingUnfinished.length === 0) {
       await supabaseAdmin
         .from("campaigns")
-        .update({ status: "sent", sent_at: new Date().toISOString() })
+        .update({ status: "completed", sent_at: new Date().toISOString() })
         .eq("id", cid);
     }
   }
 }
-
 
 export const sendCampaign = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => sendInput.parse(data))
@@ -225,8 +267,8 @@ export const sendCampaign = createServerFn({ method: "POST" })
       .maybeSingle();
     if (campaignError) throw new Error(campaignError.message);
     if (!campaign) throw new Error("Campaign not found.");
-    if (campaign.status !== "draft") {
-      throw new Error("This campaign has already been started.");
+    if (campaign.status !== "draft" && campaign.status !== "approved") {
+      throw new Error("This campaign has already been started or queued.");
     }
 
     // Security gate: check links
@@ -245,23 +287,36 @@ export const sendCampaign = createServerFn({ method: "POST" })
       }
     }
 
+    // Recipient snapshotting: only select subscribed leads with active suppression status
     const { data: leads, error: leadsError } = await supabaseAdmin
       .from("leads")
       .select("id, email, name")
-      .eq("subscribed", true);
+      .eq("subscribed", true)
+      .or("suppression_status.is.null,suppression_status.eq.active");
+
     if (leadsError) throw new Error(leadsError.message);
-    if (!leads || leads.length === 0) throw new Error("No subscribed leads to send to.");
+    if (!leads || leads.length === 0) throw new Error("No eligible subscribed leads to send to.");
 
     // Claim draft
     const { data: claimedCampaign, error: claimError } = await supabaseAdmin
       .from("campaigns")
-      .update({ status: "queued" })
+      .update({
+        status: "queued",
+        approved_at: new Date().toISOString(),
+        approved_by: "Owner",
+        recipient_count: leads.length,
+      })
       .eq("id", campaign.id)
-      .eq("status", "draft")
       .select("id")
       .maybeSingle();
     if (claimError) throw new Error(claimError.message);
     if (!claimedCampaign) throw new Error("This campaign is already being processed.");
+
+    // Audit log approval
+    await supabaseAdmin.from("audit_logs").insert({
+      action: "campaign_approved",
+      details: { campaignId: campaign.id, recipientCount: leads.length, mode: "immediate" },
+    });
 
     // Insert queued send records
     const { error: sendsError } = await supabaseAdmin
@@ -287,6 +342,47 @@ export const sendCampaign = createServerFn({ method: "POST" })
     return { queued: true, count: leads.length };
   });
 
+export const scheduleCampaign = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => scheduleInput.parse(data))
+  .handler(async ({ data }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const { data: campaign } = await supabaseAdmin
+      .from("campaigns")
+      .select("id, status")
+      .eq("id", data.campaignId)
+      .maybeSingle();
+
+    if (!campaign) throw new Error("Campaign not found.");
+
+    const { data: leads } = await supabaseAdmin
+      .from("leads")
+      .select("id")
+      .eq("subscribed", true)
+      .or("suppression_status.is.null,suppression_status.eq.active");
+
+    const recipientCount = leads?.length || 0;
+
+    await supabaseAdmin
+      .from("campaigns")
+      .update({
+        status: "scheduled",
+        scheduled_for: data.scheduledFor,
+        approved_at: new Date().toISOString(),
+        approved_by: "Owner",
+        recipient_count: recipientCount,
+      })
+      .eq("id", data.campaignId);
+
+    // Audit log schedule
+    await supabaseAdmin.from("audit_logs").insert({
+      action: "campaign_scheduled",
+      details: { campaignId: data.campaignId, scheduledFor: data.scheduledFor, recipientCount },
+    });
+
+    return { scheduled: true, scheduledFor: data.scheduledFor };
+  });
+
 export const retryFailedSends = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => sendInput.parse(data))
   .handler(async ({ data }) => {
@@ -305,6 +401,12 @@ export const retryFailedSends = createServerFn({ method: "POST" })
       .from("campaigns")
       .update({ status: "sending" })
       .eq("id", data.campaignId);
+
+    // Audit log retry
+    await supabaseAdmin.from("audit_logs").insert({
+      action: "retry_failed_sends",
+      details: { campaignId: data.campaignId },
+    });
 
     runQueueWorker(data.campaignId, origin).catch((err) => {
       console.error("Retry failed sends worker error:", err);
@@ -337,9 +439,16 @@ export const retrySingleSend = createServerFn({ method: "POST" })
       .update({ status: "sending" })
       .eq("id", send.campaign_id);
 
+    // Audit log single retry
+    await supabaseAdmin.from("audit_logs").insert({
+      action: "retry_single_send",
+      details: { sendId: data.sendId, campaignId: send.campaign_id },
+    });
+
     runQueueWorker(send.campaign_id, origin).catch((err) => {
       console.error("Retry single send worker error:", err);
     });
 
     return { success: true };
   });
+

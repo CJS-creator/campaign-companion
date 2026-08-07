@@ -125,6 +125,7 @@ const navItems = [
   { to: "/", label: "Dashboard" },
   { to: "/leads", label: "Leads" },
   { to: "/campaigns/new", label: "Compose" },
+  { to: "/settings", label: "Settings" },
 ] as const;
 
 function RootComponent() {
