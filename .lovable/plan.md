@@ -1,56 +1,68 @@
-# Campaign Companion — Review & Next Phase
+# Campaign Companion — Full Review (updated after your 2 changes)
 
-## Critical finding first
+## The one thing blocking everything
 
-The queue/retry code shipped last turn assumes columns that **do not exist in the live database**. Two migration files sit in the project (`campaign_delivery_status`, `claim_queued_sends_function`) but the database still has `sends` with only `sent_at / opened_at / clicked_at` — no `status`, `attempt_count`, `failure_reason`, `last_attempt_at` — and no `claim_queued_sends` function. Every send, retry, and the campaign detail page will error at runtime until this is applied. Also, `campaigns.status` is set to `queued` by the send path but the intended check constraint only allows draft/sending/sent.
+**None of the last three migrations were ever applied to the live database.** I checked the actual schema, and it is still the original one:
 
-Fixing this is step 1 of any further work.
+- `leads`: id, email, name, subscribed, created_at
+- `campaigns`: id, subject, body_html, offer_url, status, sent_at, created_at
+- `sends`: id, campaign_id, lead_id, sent_at, opened_at, clicked_at, created_at
 
-## Where the app stands
+There is no `settings` table, no `audit_logs`, no `events`, no consent or suppression columns, no `body_text`, no `scheduled_for`, and no `sends.status` / `attempt_count` / `failure_reason`. There are no database functions, so `claim_queued_sends` is missing too.
 
-**Strong**
-- Lead management: manual add, spreadsheet import with header matching and duplicate skipping, CSV export.
-- Link safety: static checks (https-only, private/local hosts, embedded credentials, shorteners, punycode) plus a live reachability/redirect check, enforced both in the composer and again server-side before Resend is called.
-- Tracking: signed open pixel and click redirect with HMAC tokens, failing open so email rendering never breaks.
-- Throttled batch sending (2 per ~1.1s) with adaptive backoff on 429/503.
+The new code depends on all of it. So right now: saving a campaign fails (`body_text` doesn't exist), the pre-send checklist reads settings that don't exist, scheduling fails, and the send queue and retry paths fail on the first write. The three SQL files on disk are drafts that never ran.
 
-**Gaps**
-- Sending is single-request-driven; a long list can outlive the request. No cron/scheduled drain of the queue.
-- No unsubscribe link, no consent record, no audit trail — a real marketing send would be non-compliant.
-- Still sending from `onboarding@resend.dev`, which only delivers to the Resend account owner. No verified domain, no SPF/DKIM, no bounce/complaint webhook.
-- No auth at all; tables are world-readable/writable through the public API.
-- Analytics stop at sent/open/click counts. No bounce, unsubscribe, per-recipient timeline, or time-series.
-- No segmentation, tags, scheduling, drip, or A/B testing. Personalization is a single `{{name}}` token.
-- Accessibility and small-screen layout haven't been checked.
+Two further problems inside those drafts, which must be fixed before applying them:
+1. The Phase 0 migration adds `provider_message_id` / `attempt_history` to `sends` but assumes the earlier migration's `status`, `attempt_count`, `failure_reason`, `last_attempt_at` already exist. Applied out of order or alone, the queue still breaks.
+2. Its campaign status constraint allows `draft, approved, scheduled, queued, sending, completed, cancelled` — but the worker writes `sent`. Every campaign completion would be rejected by the constraint.
+3. No `GRANT` statements on the three new tables, so even with RLS policies the app can't reach them.
 
-## Recommended phases
+## Review by area
 
-### Phase 1 — Make it correct (blocking)
-1. Apply the pending delivery-status migration and the claim function; widen the campaign status constraint to include `queued`.
-2. Verify the whole send → retry → detail-page path end to end against the real schema.
-3. Show per-recipient failure reasons on the campaign detail page.
+**Lead management** — Strong. Manual add, spreadsheet import with header matching and duplicate skipping, CSV export. Missing: the consent fields the compliance work assumes, and there's no unsubscribe surface yet.
 
-### Phase 2 — Compliance and deliverability
-4. Unsubscribe: signed one-click unsubscribe route, link auto-appended to every send, `List-Unsubscribe` header.
-5. Consent trail: record source (manual / import / form), consent timestamp, and unsubscribe timestamp per lead.
-6. Bounce and complaint handling via a Resend webhook that auto-unsubscribes hard bounces and complaints.
-7. Guidance and a settings field for a verified sender domain, replacing the hardcoded test address.
+**Campaign creation & sending** — Composer, clone, preview, merge tags, throttled batches with adaptive backoff on 429/503, and a scheduling UI. But scheduling has no runner: `scheduled_for` is written and nothing ever picks it up. And the worker is launched as a fire-and-forget promise inside the request, so a large list can be cut off when the request ends.
 
-### Phase 3 — Protect the data
-8. Add login and move all tables off the permissive "anyone can do anything" policies to owner-scoped access, with a separate roles table if more than one user is expected.
+**Email delivery** — Still hardcoded to `onboarding@resend.dev`, which only delivers to the Resend account owner. `settings.sender_domain` exists in the draft schema but nothing uses it. The bounce webhook is unauthenticated and unverified: anyone who knows the URL can POST a fake `email.bounced` and unsubscribe any lead.
 
-### Phase 4 — Scale the sender
-9. Drain the queue from a scheduled job instead of a background promise, so large lists finish reliably.
-10. Scheduled sends (send at a chosen time) built on the same queue.
+**Link safety** — Genuinely good. Static checks plus live reachability, enforced in the composer and re-checked server-side before Resend is called.
 
-### Phase 5 — Grow the product
-11. Tags/segments on leads and send-to-segment.
-12. Richer analytics: bounce and unsubscribe rates, opens over time, per-recipient activity.
-13. A/B subject-line testing with automatic winner reporting.
-14. Drip sequences triggered by signup or by a previous campaign's open/click.
+**Analytics** — Sent / open / click only. No bounce, unsubscribe, or delivery-failure reporting, no time series, no per-recipient timeline. Open tracking will over-report because of image proxies; there's no bot-open filtering.
+
+**Compliance** — The checklist claims "RFC 8058 One-Click List-Unsubscribe & footer ready" and "plain-text fallback enabled", but neither is actually implemented in the send path. That's a green tick that isn't true, which is worse than a red one. No unsubscribe route, no `List-Unsubscribe` header, no footer injection, no audit writes.
+
+**Security** — There's a `login.tsx` and an `auth.server.ts`, but the tables still carry `ALL / true / true` policies for `anon`, so the data is fully readable and writable by anyone with the project URL regardless of the login screen. The worker endpoint falls back to "no key configured = open".
+
+**Advanced** — No segmentation, drip, or A/B testing. Personalization is `{{name}}` only.
+
+## Prioritized plan
+
+### Phase 1 — Get the database and the code back in sync (must be first)
+1. Write one consolidated migration that applies delivery-status columns, the claim function, and the Phase 0 tables in the right order, with `sent` added to the campaign status constraint and `GRANT`s on `settings`, `audit_logs`, `events`.
+2. Walk every code path that touches the new columns and confirm it works against the real schema: save draft, send, retry, schedule, campaign detail.
+
+### Phase 2 — Make the checklist honest
+3. Implement the unsubscribe route (signed token, reusing the existing HMAC helper), auto-append the footer with business name and postal address, and set the `List-Unsubscribe` / `List-Unsubscribe-Post` headers on every send.
+4. Send a real plain-text part alongside the HTML.
+5. Write consent and suppression data on lead add/import, and audit rows on send/schedule/unsubscribe.
+
+### Phase 3 — Close the security holes
+6. Verify the Resend webhook signature before it can unsubscribe anyone; reject unsigned requests.
+7. Require a real secret on the worker endpoint instead of failing open.
+8. Move the tables off the fully public policies — real auth with owner-scoped RLS, not a client-side login screen over open tables.
+
+### Phase 4 — Make sending reliable at size
+9. Drain the queue from a scheduled job rather than a background promise, and have that same job pick up scheduled campaigns when their time arrives.
+10. Enforce the daily/monthly caps in the worker, not just as a checklist warning.
+11. Use the configured sender domain instead of the hardcoded test address.
+
+### Phase 5 — Depth
+12. Bounce/unsubscribe/failure rates and opens-over-time on the dashboard; per-recipient activity on the campaign page.
+13. Tags and segments, send-to-segment.
+14. A/B subject testing, then drip sequences.
 
 ## Technical notes
-- Queue draining belongs behind an authenticated `/api/public/*` route callable by pg_cron, replacing the current fire-and-forget `runQueueWorker` promise.
-- Unsubscribe tokens reuse the existing HMAC helper in `src/lib/link-safety.ts`.
-- Bounce/complaint webhook must verify the Resend signature before writing.
-- Adding auth requires rewriting every RLS policy on `leads`, `campaigns`, and `sends` plus the grants; server functions using the admin client keep working but should verify the caller.
+- Migration ordering matters: `sends.status` must exist before `attempt_history` and before the claim function is created.
+- Unsubscribe and webhook verification both belong under `src/routes/api/public/*` so external callers reach them, with signature checks inside the handler.
+- The scheduled runner should be a single authenticated endpoint that both drains the queue and promotes due `scheduled` campaigns, called on a cron.
+- Adding real auth means rewriting every policy on `leads`, `campaigns`, `sends`, plus the new tables, and re-checking each server function that currently relies on the admin client.
