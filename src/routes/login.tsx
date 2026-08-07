@@ -13,12 +13,14 @@ import { toast } from "sonner";
 export const loginServerFn = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => z.object({ password: z.string() }).parse(data))
   .handler(async ({ data }) => {
+    const crypto = await import("node:crypto");
     const { getOwnerPassword, createOwnerSessionCookie } = await import("@/lib/auth.server");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    const ownerPass = getOwnerPassword();
-    if (data.password !== ownerPass) {
-      throw new Error("Invalid owner password.");
+    const hash = (v: string) => crypto.createHash("sha256").update(v, "utf8").digest();
+    const ok = crypto.timingSafeEqual(hash(data.password), hash(getOwnerPassword()));
+    if (!ok) {
+      return { success: false as const, error: "Invalid owner password." };
     }
 
     // Set signed session cookie
@@ -31,8 +33,9 @@ export const loginServerFn = createServerFn({ method: "POST" })
       details: { timestamp: new Date().toISOString(), status: "success" },
     });
 
-    return { success: true };
+    return { success: true as const };
   });
+
 
 export const logoutServerFn = createServerFn({ method: "POST" }).handler(async () => {
   const { clearOwnerSessionCookie } = await import("@/lib/auth.server");
