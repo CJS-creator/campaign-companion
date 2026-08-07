@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { toast } from "sonner";
+import { Download } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { leadsQuery, type Lead } from "@/lib/data";
 import { Button } from "@/components/ui/button";
