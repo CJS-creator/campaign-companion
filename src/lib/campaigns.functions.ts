@@ -40,6 +40,7 @@ export async function runQueueWorker(targetCampaignId?: string, origin?: string)
   const fromAddress = settings?.from_address || FROM_ADDRESS;
 
   // Sending caps (deliverability / reputation safeguard)
+  const enforceCaps = settings?.enforce_caps ?? true;
   const dailyCap = settings?.daily_cap ?? 100;
   const monthlyCap = settings?.monthly_cap ?? 3000;
   const now = new Date();
@@ -53,12 +54,13 @@ export async function runQueueWorker(targetCampaignId?: string, origin?: string)
       .gte("sent_at", since);
     return count ?? 0;
   };
-  let remainingToday = dailyCap - (await countSince(dayStart));
-  let remainingMonth = monthlyCap - (await countSince(monthStart));
+  let remainingToday = enforceCaps ? dailyCap - (await countSince(dayStart)) : Number.MAX_SAFE_INTEGER;
+  let remainingMonth = enforceCaps ? monthlyCap - (await countSince(monthStart)) : Number.MAX_SAFE_INTEGER;
   if (remainingToday <= 0 || remainingMonth <= 0) {
     console.warn("Worker: sending cap reached, deferring queue.");
     return;
   }
+
 
 
   let campaignIds: string[] = [];
