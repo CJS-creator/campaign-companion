@@ -3,10 +3,13 @@ import {
   Outlet,
   Link,
   createRootRouteWithContext,
+  redirect,
+  useNavigate,
   useRouter,
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
+import { getSessionStatus } from "../lib/app.functions";
 import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
@@ -101,6 +104,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
     ],
   }),
+  beforeLoad: async ({ location }) => {
+    if (location.pathname.startsWith("/login") || location.pathname.startsWith("/track")) return;
+    const { authenticated } = await getSessionStatus();
+    if (!authenticated) throw redirect({ to: "/login" });
+  },
   shellComponent: RootShell,
   component: RootComponent,
   notFoundComponent: NotFoundComponent,
@@ -125,11 +133,21 @@ const navItems = [
   { to: "/", label: "Dashboard" },
   { to: "/leads", label: "Leads" },
   { to: "/campaigns/new", label: "Compose" },
+  { to: "/events", label: "Events" },
   { to: "/settings", label: "Settings" },
 ] as const;
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const router = useRouter();
+  const navigate = useNavigate();
+
+  const signOut = async () => {
+    const { logoutServerFn } = await import("./login");
+    await logoutServerFn();
+    await router.invalidate();
+    navigate({ to: "/login" });
+  };
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -152,6 +170,13 @@ function RootComponent() {
                 </Link>
               ))}
             </nav>
+            <button
+              type="button"
+              onClick={signOut}
+              className="ml-auto rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+            >
+              Sign out
+            </button>
           </div>
         </header>
         <main className="mx-auto max-w-5xl px-6 py-10">
