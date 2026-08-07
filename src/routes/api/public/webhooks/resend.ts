@@ -79,21 +79,40 @@ export const Route = createFileRoute("/api/public/webhooks/resend")({
         // Resolve the matching send record when the provider message id is known
         let sendId: string | null = null;
         let leadId: string | null = null;
+        let campaignId: string | null = null;
         if (messageId) {
           const { data: send } = await supabaseAdmin
             .from("sends")
-            .select("id, lead_id")
+            .select("id, lead_id, campaign_id")
             .eq("provider_message_id", messageId)
             .maybeSingle();
           sendId = send?.id ?? null;
           leadId = send?.lead_id ?? null;
+          campaignId = send?.campaign_id ?? null;
         }
 
+        if (!leadId && recipient) {
+          const { data: lead } = await supabaseAdmin
+            .from("leads")
+            .select("id")
+            .eq("email", recipient)
+            .maybeSingle();
+          leadId = lead?.id ?? null;
+        }
+
+        const { data: settings } = await supabaseAdmin
+          .from("settings")
+          .select("auto_suppress_bounces")
+          .eq("id", "default")
+          .maybeSingle();
+        const autoSuppress = settings?.auto_suppress_bounces ?? true;
+
         const nowIso = new Date().toISOString();
+        const shortType = type.replace(/^email\./, "") || "unknown";
 
         if (type === "email.bounced" || type === "email.complained") {
           const suppression = type === "email.complained" ? "complained" : "bounced";
-          if (recipient) {
+          if (recipient && autoSuppress) {
             await supabaseAdmin
               .from("leads")
               .update({
@@ -135,10 +154,18 @@ export const Route = createFileRoute("/api/public/webhooks/resend")({
         await supabaseAdmin.from("events").insert({
           send_id: sendId,
           lead_id: leadId,
-          event_type: type || "unknown",
+          campaign_id: campaignId,
+          event_type: shortType,
           reason: data.bounce?.type ?? null,
-          metadata: { provider: "resend", recipient: recipient ?? null, message_id: messageId ?? null },
+          metadata: {
+            provider: "resend",
+            raw_type: type,
+            recipient: recipient ?? null,
+            message_id: messageId ?? null,
+            suppressed: autoSuppress,
+          },
         });
+
 
         return new Response(JSON.stringify({ received: true }), {
           status: 200,
