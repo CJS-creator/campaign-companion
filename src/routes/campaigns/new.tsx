@@ -5,8 +5,8 @@ import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { z } from "zod";
 import { ShieldCheck, ShieldAlert, Loader2, TriangleAlert, Tag, Clock, Calendar, Send } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
 import { leadsQuery, campaignQuery } from "@/lib/data";
+import { createCampaign } from "@/lib/app.functions";
 import { sendCampaign, scheduleCampaign } from "@/lib/campaigns.functions";
 import { getSettings } from "@/lib/settings.functions";
 import { verifyLink, type LinkCheckResult } from "@/lib/links.functions";
@@ -113,20 +113,13 @@ function ComposerPage() {
 
   const save = async (status: "draft" | "send" | "schedule") => {
     const parsed = schema.parse({ subject, offerUrl, bodyHtml });
-    const plainText = parsed.bodyHtml.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-
-    const { data, error } = await supabase
-      .from("campaigns")
-      .insert({
+    const data = await createCampaign({
+      data: {
         subject: parsed.subject,
-        body_html: parsed.bodyHtml,
-        body_text: plainText,
-        offer_url: parsed.offerUrl || null,
-      })
-      .select("id")
-      .single();
-
-    if (error) throw new Error(error.message);
+        bodyHtml: parsed.bodyHtml,
+        offerUrl: parsed.offerUrl || null,
+      },
+    });
 
     if (status === "send") {
       void send({ data: { campaignId: data.id as string } })
