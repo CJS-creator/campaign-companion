@@ -56,21 +56,30 @@ export const Route = createFileRoute("/login")({
 function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setError(null);
     try {
-      await loginServerFn({ data: { password } });
+      const res = await loginServerFn({ data: { password } });
+      if (!res.success) {
+        setError(res.error ?? "Invalid owner password.");
+        toast.error(res.error ?? "Invalid owner password.");
+        return;
+      }
       toast.success("Welcome back, Owner!");
       navigate({ to: "/" });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Login failed");
+    } catch {
+      setError("Login failed. Please try again.");
+      toast.error("Login failed. Please try again.");
     } finally {
       setLoading(false);
     }
   };
+
 
   return (
     <div className="flex min-h-[70vh] items-center justify-center px-4">
