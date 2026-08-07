@@ -242,13 +242,17 @@ export type Database = {
       }
       settings: {
         Row: {
+          auto_suppress_bounces: boolean
+          block_url_shorteners: boolean
           business_name: string
           created_at: string
           daily_cap: number
+          enforce_caps: boolean
           from_address: string
           id: string
           monthly_cap: number
           postal_address: string
+          require_link_check: boolean
           sender_domain: string
           support_email: string
           throttle_pause_ms: number
@@ -256,13 +260,17 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          auto_suppress_bounces?: boolean
+          block_url_shorteners?: boolean
           business_name?: string
           created_at?: string
           daily_cap?: number
+          enforce_caps?: boolean
           from_address?: string
           id?: string
           monthly_cap?: number
           postal_address?: string
+          require_link_check?: boolean
           sender_domain?: string
           support_email?: string
           throttle_pause_ms?: number
@@ -270,13 +278,17 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          auto_suppress_bounces?: boolean
+          block_url_shorteners?: boolean
           business_name?: string
           created_at?: string
           daily_cap?: number
+          enforce_caps?: boolean
           from_address?: string
           id?: string
           monthly_cap?: number
           postal_address?: string
+          require_link_check?: boolean
           sender_domain?: string
           support_email?: string
           throttle_pause_ms?: number
