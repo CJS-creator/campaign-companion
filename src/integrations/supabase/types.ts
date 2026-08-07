@@ -14,87 +14,214 @@ export type Database = {
   }
   public: {
     Tables: {
+      audit_logs: {
+        Row: {
+          action: string
+          created_at: string
+          details: Json
+          id: string
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          details?: Json
+          id?: string
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          details?: Json
+          id?: string
+        }
+        Relationships: []
+      }
       campaigns: {
         Row: {
+          approved_at: string | null
+          approved_by: string | null
           body_html: string
+          body_text: string | null
           created_at: string
           id: string
           offer_url: string | null
+          recipient_count: number
+          scheduled_for: string | null
           sent_at: string | null
           status: string
           subject: string
         }
         Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
           body_html?: string
+          body_text?: string | null
           created_at?: string
           id?: string
           offer_url?: string | null
+          recipient_count?: number
+          scheduled_for?: string | null
           sent_at?: string | null
           status?: string
           subject: string
         }
         Update: {
+          approved_at?: string | null
+          approved_by?: string | null
           body_html?: string
+          body_text?: string | null
           created_at?: string
           id?: string
           offer_url?: string | null
+          recipient_count?: number
+          scheduled_for?: string | null
           sent_at?: string | null
           status?: string
           subject?: string
         }
         Relationships: []
       }
+      events: {
+        Row: {
+          campaign_id: string | null
+          created_at: string
+          event_type: string
+          id: string
+          lead_id: string | null
+          metadata: Json
+          reason: string | null
+          send_id: string | null
+        }
+        Insert: {
+          campaign_id?: string | null
+          created_at?: string
+          event_type: string
+          id?: string
+          lead_id?: string | null
+          metadata?: Json
+          reason?: string | null
+          send_id?: string | null
+        }
+        Update: {
+          campaign_id?: string | null
+          created_at?: string
+          event_type?: string
+          id?: string
+          lead_id?: string | null
+          metadata?: Json
+          reason?: string | null
+          send_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "events_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "events_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "events_send_id_fkey"
+            columns: ["send_id"]
+            isOneToOne: false
+            referencedRelation: "sends"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       leads: {
         Row: {
+          consent_date: string
+          consent_note: string | null
+          consent_source: string
           created_at: string
           email: string
           id: string
           name: string | null
           subscribed: boolean
+          suppressed_at: string | null
+          suppression_reason: string | null
+          suppression_status: string
         }
         Insert: {
+          consent_date?: string
+          consent_note?: string | null
+          consent_source?: string
           created_at?: string
           email: string
           id?: string
           name?: string | null
           subscribed?: boolean
+          suppressed_at?: string | null
+          suppression_reason?: string | null
+          suppression_status?: string
         }
         Update: {
+          consent_date?: string
+          consent_note?: string | null
+          consent_source?: string
           created_at?: string
           email?: string
           id?: string
           name?: string | null
           subscribed?: boolean
+          suppressed_at?: string | null
+          suppression_reason?: string | null
+          suppression_status?: string
         }
         Relationships: []
       }
       sends: {
         Row: {
+          attempt_count: number
+          attempt_history: Json
           campaign_id: string
           clicked_at: string | null
           created_at: string
+          failure_reason: string | null
           id: string
+          last_attempt_at: string | null
           lead_id: string
           opened_at: string | null
+          provider_message_id: string | null
           sent_at: string | null
+          status: string
         }
         Insert: {
+          attempt_count?: number
+          attempt_history?: Json
           campaign_id: string
           clicked_at?: string | null
           created_at?: string
+          failure_reason?: string | null
           id?: string
+          last_attempt_at?: string | null
           lead_id: string
           opened_at?: string | null
+          provider_message_id?: string | null
           sent_at?: string | null
+          status?: string
         }
         Update: {
+          attempt_count?: number
+          attempt_history?: Json
           campaign_id?: string
           clicked_at?: string | null
           created_at?: string
+          failure_reason?: string | null
           id?: string
+          last_attempt_at?: string | null
           lead_id?: string
           opened_at?: string | null
+          provider_message_id?: string | null
           sent_at?: string | null
+          status?: string
         }
         Relationships: [
           {
@@ -113,12 +240,65 @@ export type Database = {
           },
         ]
       }
+      settings: {
+        Row: {
+          business_name: string
+          created_at: string
+          daily_cap: number
+          from_address: string
+          id: string
+          monthly_cap: number
+          postal_address: string
+          sender_domain: string
+          support_email: string
+          throttle_pause_ms: number
+          timezone: string
+          updated_at: string
+        }
+        Insert: {
+          business_name?: string
+          created_at?: string
+          daily_cap?: number
+          from_address?: string
+          id?: string
+          monthly_cap?: number
+          postal_address?: string
+          sender_domain?: string
+          support_email?: string
+          throttle_pause_ms?: number
+          timezone?: string
+          updated_at?: string
+        }
+        Update: {
+          business_name?: string
+          created_at?: string
+          daily_cap?: number
+          from_address?: string
+          id?: string
+          monthly_cap?: number
+          postal_address?: string
+          sender_domain?: string
+          support_email?: string
+          throttle_pause_ms?: number
+          timezone?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      claim_queued_sends: {
+        Args: { p_batch_size: number; p_campaign_id: string }
+        Returns: {
+          attempt_count: number
+          id: string
+          lead_id: string
+          status: string
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never
