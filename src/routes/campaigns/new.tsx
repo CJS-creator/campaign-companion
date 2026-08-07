@@ -19,9 +19,8 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 
 export const Route = createFileRoute("/campaigns/new")({
-  validateSearch: (search: Record<string, unknown>) => ({
-    clone: typeof search["clone"] === "string" ? search["clone"] : undefined,
-  }),
+  validateSearch: (search: Record<string, unknown>): { clone?: string } =>
+    typeof search["clone"] === "string" ? { clone: search["clone"] } : {},
   head: () => ({
     meta: [
       { title: "New campaign — Postmark Studio" },

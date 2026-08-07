@@ -75,7 +75,14 @@ function LeadsPage() {
       const parsed = leadSchema.parse({ email, name });
       const { error } = await supabase
         .from("leads")
-        .insert({ email: parsed.email.toLowerCase(), name: parsed.name || null });
+        .insert({
+          email: parsed.email.toLowerCase(),
+          name: parsed.name || null,
+          consent_source: "manual",
+          consent_date: new Date().toISOString(),
+          consent_note: "Added manually by the owner",
+        });
+
       if (error) {
         throw new Error(error.code === "23505" ? "That email is already on the list." : error.message);
       }

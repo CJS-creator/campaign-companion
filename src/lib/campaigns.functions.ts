@@ -37,6 +37,29 @@ export async function runQueueWorker(targetCampaignId?: string, origin?: string)
   const businessName = settings?.business_name || "Campaign Companion";
   const postalAddress = settings?.postal_address || "123 Business Street, Mumbai, MH 400001, India";
   const supportEmail = settings?.support_email || "support@example.com";
+  const fromAddress = settings?.from_address || FROM_ADDRESS;
+
+  // Sending caps (deliverability / reputation safeguard)
+  const dailyCap = settings?.daily_cap ?? 100;
+  const monthlyCap = settings?.monthly_cap ?? 3000;
+  const now = new Date();
+  const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+  const countSince = async (since: string) => {
+    const { count } = await supabaseAdmin
+      .from("sends")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "sent")
+      .gte("sent_at", since);
+    return count ?? 0;
+  };
+  let remainingToday = dailyCap - (await countSince(dayStart));
+  let remainingMonth = monthlyCap - (await countSince(monthStart));
+  if (remainingToday <= 0 || remainingMonth <= 0) {
+    console.warn("Worker: sending cap reached, deferring queue.");
+    return;
+  }
+
 
   let campaignIds: string[] = [];
   if (targetCampaignId) {
@@ -163,7 +186,7 @@ export async function runQueueWorker(targetCampaignId?: string, origin?: string)
             Authorization: `Bearer ${apiKey}`,
           },
           body: JSON.stringify({
-            from: FROM_ADDRESS,
+            from: fromAddress,
             to: [lead.email],
             subject: campaign.subject,
             html,
@@ -226,14 +249,29 @@ export async function runQueueWorker(targetCampaignId?: string, origin?: string)
     };
 
     for (let i = 0; i < sends.length; i += BATCH_SIZE) {
-      const batch = sends.slice(i, i + BATCH_SIZE);
+      const allowed = Math.max(0, Math.min(remainingToday, remainingMonth));
+      if (allowed <= 0) {
+        console.warn("Worker: sending cap reached mid-run, remaining sends stay queued.");
+        break;
+      }
+      const batch = sends.slice(i, i + Math.min(BATCH_SIZE, allowed));
       await Promise.all(batch.map(deliverOne));
+      remainingToday -= batch.length;
+      remainingMonth -= batch.length;
       if (i + BATCH_SIZE < sends.length) {
         await wait(adaptivePauseMs);
       }
     }
+    // Release any claimed-but-unattempted sends back to the queue
+    await supabaseAdmin
+      .from("sends")
+      .update({ status: "queued" })
+      .eq("campaign_id", cid)
+      .eq("status", "sending")
+      .is("last_attempt_at", null);
 
     // Final check for completion of this campaign
+
     const { data: remainingUnfinished } = await supabaseAdmin
       .from("sends")
       .select("id")

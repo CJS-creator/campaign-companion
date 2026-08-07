@@ -1,15 +1,26 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { runQueueWorker } from "@/lib/campaigns.functions";
 
-export const Route = createFileRoute("/api/worker/process-queue")({
+/**
+ * Queue drainer, called on a schedule (pg_cron) or manually.
+ * Authenticated with the project's publishable/anon key in the `apikey` header.
+ */
+export const Route = createFileRoute("/api/public/cron/process-queue")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const authHeader = request.headers.get("authorization");
-        const expectedKey = process.env["WORKER_SECRET_KEY"] || process.env["SUPABASE_SERVICE_ROLE_KEY"];
+        const provided =
+          request.headers.get("apikey") ??
+          request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ??
+          "";
 
-        // Optional key check if defined in environment
-        if (expectedKey && authHeader !== `Bearer ${expectedKey}`) {
+        const allowed = [
+          process.env["SUPABASE_PUBLISHABLE_KEY"],
+          process.env["SUPABASE_ANON_KEY"],
+          process.env["WORKER_SECRET_KEY"],
+        ].filter((k): k is string => Boolean(k));
+
+        if (allowed.length === 0 || !allowed.includes(provided)) {
           return new Response(JSON.stringify({ error: "Unauthorized" }), {
             status: 401,
             headers: { "Content-Type": "application/json" },
@@ -18,16 +29,16 @@ export const Route = createFileRoute("/api/worker/process-queue")({
 
         const url = new URL(request.url);
         const campaignId = url.searchParams.get("campaign_id") || undefined;
-        const origin = url.origin;
 
         try {
-          await runQueueWorker(campaignId, origin);
-          return new Response(JSON.stringify({ status: "success", campaignId }), {
+          await runQueueWorker(campaignId, url.origin);
+          return new Response(JSON.stringify({ status: "ok", campaignId: campaignId ?? null }), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });
         } catch (err) {
           const message = err instanceof Error ? err.message : "Worker process failed";
+          console.error("Queue worker failed:", message);
           return new Response(JSON.stringify({ error: message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
