@@ -19,6 +19,8 @@ export interface Campaign {
   status: string;
   sent_at: string | null;
   created_at: string;
+  scheduled_for?: string | null;
+  recipient_count?: number | null;
 }
 
 export interface Send {
@@ -26,7 +28,7 @@ export interface Send {
   id: string;
   campaign_id: string;
   lead_id: string;
-  status: "queued" | "sending" | "sent" | "failed";
+  status: "queued" | "sending" | "sent" | "failed" | "skipped";
   failure_reason: string | null;
   last_attempt_at: string | null;
   sent_at: string | null;

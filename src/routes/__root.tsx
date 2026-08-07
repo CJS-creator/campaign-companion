@@ -139,12 +139,9 @@ const navItems = [
   { to: "/settings", label: "Settings" },
 ] as const;
 
-function RootComponent() {
-  const { queryClient } = Route.useRouteContext();
-  const router = useRouter();
-  const navigate = useNavigate();
-
-  // Periodic background health check & queue worker tick (auto-sends scheduled campaigns when due)
+// Periodic background health check & queue worker tick. Must live INSIDE the
+// QueryClientProvider — calling useQuery in RootComponent crashed SSR.
+function BackgroundHealthCheck() {
   useQuery({
     queryKey: ["backgroundHealthCheck"],
     queryFn: async () => {
@@ -154,6 +151,13 @@ function RootComponent() {
     refetchInterval: 30000,
     refetchOnWindowFocus: true,
   });
+  return null;
+}
+
+function RootComponent() {
+  const { queryClient } = Route.useRouteContext();
+  const router = useRouter();
+  const navigate = useNavigate();
 
   const signOut = async () => {
     const { logoutServerFn } = await import("./login");
@@ -164,6 +168,7 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
+      <BackgroundHealthCheck />
       <div className="min-h-screen bg-background">
         <header className="border-b border-border">
           <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-6 px-6 py-4">

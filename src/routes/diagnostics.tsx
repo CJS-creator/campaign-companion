@@ -10,6 +10,7 @@ import {
   Server,
   Zap,
   Trash2,
+  Eye,
   Clock,
   Terminal,
   ShieldCheck,

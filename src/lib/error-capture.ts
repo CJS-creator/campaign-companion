@@ -5,9 +5,9 @@ export type CapturedError = {
   id: string;
   timestamp: string;
   message: string;
-  stack?: string;
+  stack?: string | undefined;
   source: "client_window" | "unhandled_rejection" | "react_boundary" | "server_error" | "console";
-  path?: string;
+  path?: string | undefined;
 };
 
 const MAX_ERROR_LOGS = 100;
