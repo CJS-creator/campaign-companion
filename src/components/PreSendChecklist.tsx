@@ -25,7 +25,7 @@ export function PreSendChecklist({
   senderConfigured: boolean;
   linkVerified: boolean;
   hasPlainText: boolean;
-  scheduledTime?: string;
+  scheduledTime?: string | undefined;
 }) {
   const capExceeded = recipientCount > dailyCap;
   const items: ChecklistItem[] = [
