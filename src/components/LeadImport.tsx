@@ -102,12 +102,19 @@ export function LeadImport() {
         const fresh = valid.filter((v) => !known.has(v.email));
         duplicates = valid.length - fresh.length;
 
+        const importedAt = new Date().toISOString();
         for (let i = 0; i < fresh.length; i += 200) {
-          const chunk = fresh.slice(i, i + 200);
+          const chunk = fresh.slice(i, i + 200).map((row) => ({
+            ...row,
+            consent_source: "import",
+            consent_date: importedAt,
+            consent_note: `Bulk spreadsheet import on ${importedAt}`,
+          }));
           const { error } = await supabase.from("leads").insert(chunk);
           if (error) throw new Error(error.message);
           added += chunk.length;
         }
+
       }
 
       setSummary({ added, duplicates, invalid });
