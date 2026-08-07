@@ -70,43 +70,31 @@ export type Database = {
       }
       sends: {
         Row: {
-          attempt_count: number
           campaign_id: string
           clicked_at: string | null
           created_at: string
-          failure_reason: string | null
           id: string
-          last_attempt_at: string | null
           lead_id: string
           opened_at: string | null
           sent_at: string | null
-          status: string
         }
         Insert: {
-          attempt_count?: number
           campaign_id: string
           clicked_at?: string | null
           created_at?: string
-          failure_reason?: string | null
           id?: string
-          last_attempt_at?: string | null
           lead_id: string
           opened_at?: string | null
           sent_at?: string | null
-          status?: string
         }
         Update: {
-          attempt_count?: number
           campaign_id?: string
           clicked_at?: string | null
           created_at?: string
-          failure_reason?: string | null
           id?: string
-          last_attempt_at?: string | null
           lead_id?: string
           opened_at?: string | null
           sent_at?: string | null
-          status?: string
         }
         Relationships: [
           {
