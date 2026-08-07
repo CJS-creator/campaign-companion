@@ -20,6 +20,7 @@ import { Route as TrackOpenRouteImport } from './routes/track/open'
 import { Route as TrackUnsubscribeRouteImport } from './routes/track/unsubscribe'
 import { Route as ApiWebhooksResendRouteImport } from './routes/api/webhooks/resend'
 import { Route as ApiWorkerProcessQueueRouteImport } from './routes/api/worker/process-queue'
+import { Route as ApiPublicCronProcessQueueRouteImport } from './routes/api/public/cron/process-queue'
 import { Route as ApiPublicWebhooksResendRouteImport } from './routes/api/public/webhooks/resend'
 
 const IndexRoute = IndexRouteImport.update({
@@ -77,6 +78,12 @@ const ApiWorkerProcessQueueRoute = ApiWorkerProcessQueueRouteImport.update({
   path: '/api/worker/process-queue',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicCronProcessQueueRoute =
+  ApiPublicCronProcessQueueRouteImport.update({
+    id: '/api/public/cron/process-queue',
+    path: '/api/public/cron/process-queue',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicWebhooksResendRoute = ApiPublicWebhooksResendRouteImport.update({
   id: '/api/public/webhooks/resend',
   path: '/api/public/webhooks/resend',
@@ -95,6 +102,7 @@ export interface FileRoutesByFullPath {
   '/track/unsubscribe': typeof TrackUnsubscribeRoute
   '/api/webhooks/resend': typeof ApiWebhooksResendRoute
   '/api/worker/process-queue': typeof ApiWorkerProcessQueueRoute
+  '/api/public/cron/process-queue': typeof ApiPublicCronProcessQueueRoute
   '/api/public/webhooks/resend': typeof ApiPublicWebhooksResendRoute
 }
 export interface FileRoutesByTo {
@@ -109,6 +117,7 @@ export interface FileRoutesByTo {
   '/track/unsubscribe': typeof TrackUnsubscribeRoute
   '/api/webhooks/resend': typeof ApiWebhooksResendRoute
   '/api/worker/process-queue': typeof ApiWorkerProcessQueueRoute
+  '/api/public/cron/process-queue': typeof ApiPublicCronProcessQueueRoute
   '/api/public/webhooks/resend': typeof ApiPublicWebhooksResendRoute
 }
 export interface FileRoutesById {
@@ -124,6 +133,7 @@ export interface FileRoutesById {
   '/track/unsubscribe': typeof TrackUnsubscribeRoute
   '/api/webhooks/resend': typeof ApiWebhooksResendRoute
   '/api/worker/process-queue': typeof ApiWorkerProcessQueueRoute
+  '/api/public/cron/process-queue': typeof ApiPublicCronProcessQueueRoute
   '/api/public/webhooks/resend': typeof ApiPublicWebhooksResendRoute
 }
 export interface FileRouteTypes {
@@ -140,6 +150,7 @@ export interface FileRouteTypes {
     | '/track/unsubscribe'
     | '/api/webhooks/resend'
     | '/api/worker/process-queue'
+    | '/api/public/cron/process-queue'
     | '/api/public/webhooks/resend'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -154,6 +165,7 @@ export interface FileRouteTypes {
     | '/track/unsubscribe'
     | '/api/webhooks/resend'
     | '/api/worker/process-queue'
+    | '/api/public/cron/process-queue'
     | '/api/public/webhooks/resend'
   id:
     | '__root__'
@@ -168,6 +180,7 @@ export interface FileRouteTypes {
     | '/track/unsubscribe'
     | '/api/webhooks/resend'
     | '/api/worker/process-queue'
+    | '/api/public/cron/process-queue'
     | '/api/public/webhooks/resend'
   fileRoutesById: FileRoutesById
 }
@@ -183,6 +196,7 @@ export interface RootRouteChildren {
   TrackUnsubscribeRoute: typeof TrackUnsubscribeRoute
   ApiWebhooksResendRoute: typeof ApiWebhooksResendRoute
   ApiWorkerProcessQueueRoute: typeof ApiWorkerProcessQueueRoute
+  ApiPublicCronProcessQueueRoute: typeof ApiPublicCronProcessQueueRoute
   ApiPublicWebhooksResendRoute: typeof ApiPublicWebhooksResendRoute
 }
 
@@ -265,6 +279,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiWorkerProcessQueueRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/cron/process-queue': {
+      id: '/api/public/cron/process-queue'
+      path: '/api/public/cron/process-queue'
+      fullPath: '/api/public/cron/process-queue'
+      preLoaderRoute: typeof ApiPublicCronProcessQueueRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/webhooks/resend': {
       id: '/api/public/webhooks/resend'
       path: '/api/public/webhooks/resend'
@@ -287,6 +308,7 @@ const rootRouteChildren: RootRouteChildren = {
   TrackUnsubscribeRoute: TrackUnsubscribeRoute,
   ApiWebhooksResendRoute: ApiWebhooksResendRoute,
   ApiWorkerProcessQueueRoute: ApiWorkerProcessQueueRoute,
+  ApiPublicCronProcessQueueRoute: ApiPublicCronProcessQueueRoute,
   ApiPublicWebhooksResendRoute: ApiPublicWebhooksResendRoute,
 }
 export const routeTree = rootRouteImport
