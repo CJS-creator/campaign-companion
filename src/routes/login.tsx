@@ -108,6 +108,14 @@ function LoginPage() {
             />
           </div>
 
+          {error && (
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          )}
+
+
+
           <Button type="submit" className="w-full" disabled={loading || !password}>
             {loading ? "Authenticating…" : (
               <span className="flex items-center gap-2">
