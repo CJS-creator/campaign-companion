@@ -262,9 +262,16 @@ export async function runQueueWorker(targetCampaignId?: string, origin?: string)
         await wait(adaptivePauseMs);
       }
     }
-
+    // Release any claimed-but-unattempted sends back to the queue
+    await supabaseAdmin
+      .from("sends")
+      .update({ status: "queued" })
+      .eq("campaign_id", cid)
+      .eq("status", "sending")
+      .is("last_attempt_at", null);
 
     // Final check for completion of this campaign
+
     const { data: remainingUnfinished } = await supabaseAdmin
       .from("sends")
       .select("id")
