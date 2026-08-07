@@ -15,6 +15,7 @@ import { Route as CampaignsIdRouteImport } from './routes/campaigns/$id'
 import { Route as CampaignsNewRouteImport } from './routes/campaigns/new'
 import { Route as TrackClickRouteImport } from './routes/track/click'
 import { Route as TrackOpenRouteImport } from './routes/track/open'
+import { Route as ApiWorkerProcessQueueRouteImport } from './routes/api/worker/process-queue'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -46,6 +47,11 @@ const TrackOpenRoute = TrackOpenRouteImport.update({
   path: '/track/open',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiWorkerProcessQueueRoute = ApiWorkerProcessQueueRouteImport.update({
+  id: '/api/worker/process-queue',
+  path: '/api/worker/process-queue',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -54,6 +60,7 @@ export interface FileRoutesByFullPath {
   '/campaigns/new': typeof CampaignsNewRoute
   '/track/click': typeof TrackClickRoute
   '/track/open': typeof TrackOpenRoute
+  '/api/worker/process-queue': typeof ApiWorkerProcessQueueRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -62,6 +69,7 @@ export interface FileRoutesByTo {
   '/campaigns/new': typeof CampaignsNewRoute
   '/track/click': typeof TrackClickRoute
   '/track/open': typeof TrackOpenRoute
+  '/api/worker/process-queue': typeof ApiWorkerProcessQueueRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -71,6 +79,7 @@ export interface FileRoutesById {
   '/campaigns/new': typeof CampaignsNewRoute
   '/track/click': typeof TrackClickRoute
   '/track/open': typeof TrackOpenRoute
+  '/api/worker/process-queue': typeof ApiWorkerProcessQueueRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -81,6 +90,7 @@ export interface FileRouteTypes {
     | '/campaigns/new'
     | '/track/click'
     | '/track/open'
+    | '/api/worker/process-queue'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -89,6 +99,7 @@ export interface FileRouteTypes {
     | '/campaigns/new'
     | '/track/click'
     | '/track/open'
+    | '/api/worker/process-queue'
   id:
     | '__root__'
     | '/'
@@ -97,6 +108,7 @@ export interface FileRouteTypes {
     | '/campaigns/new'
     | '/track/click'
     | '/track/open'
+    | '/api/worker/process-queue'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -106,6 +118,7 @@ export interface RootRouteChildren {
   CampaignsNewRoute: typeof CampaignsNewRoute
   TrackClickRoute: typeof TrackClickRoute
   TrackOpenRoute: typeof TrackOpenRoute
+  ApiWorkerProcessQueueRoute: typeof ApiWorkerProcessQueueRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -152,6 +165,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TrackOpenRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/worker/process-queue': {
+      id: '/api/worker/process-queue'
+      path: '/api/worker/process-queue'
+      fullPath: '/api/worker/process-queue'
+      preLoaderRoute: typeof ApiWorkerProcessQueueRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -162,7 +182,18 @@ const rootRouteChildren: RootRouteChildren = {
   CampaignsNewRoute: CampaignsNewRoute,
   TrackClickRoute: TrackClickRoute,
   TrackOpenRoute: TrackOpenRoute,
+  ApiWorkerProcessQueueRoute: ApiWorkerProcessQueueRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}

@@ -1,15 +1,16 @@
 import { useEffect, useState } from "react";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { z } from "zod";
-import { ShieldCheck, ShieldAlert, Loader2, TriangleAlert } from "lucide-react";
+import { ShieldCheck, ShieldAlert, Loader2, TriangleAlert, Tag } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { leadsQuery } from "@/lib/data";
+import { leadsQuery, campaignQuery } from "@/lib/data";
 import { sendCampaign } from "@/lib/campaigns.functions";
 import { verifyLink, type LinkCheckResult } from "@/lib/links.functions";
 import { RichTextEditor } from "@/components/RichTextEditor";
+import { CampaignPreview } from "@/components/CampaignPreview";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,6 +18,9 @@ import { Card } from "@/components/ui/card";
 
 
 export const Route = createFileRoute("/campaigns/new")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    clone: typeof search["clone"] === "string" ? search["clone"] : undefined,
+  }),
   head: () => ({
     meta: [
       { title: "New campaign — Postmark Studio" },
@@ -44,6 +48,7 @@ const schema = z.object({
 
 function ComposerPage() {
   const navigate = useNavigate();
+  const searchParams = useSearch({ from: "/campaigns/new" });
   const qc = useQueryClient();
   const send = useServerFn(sendCampaign);
   const { data: leads = [] } = useQuery(leadsQuery);
@@ -52,6 +57,21 @@ function ComposerPage() {
   const [subject, setSubject] = useState("");
   const [offerUrl, setOfferUrl] = useState("");
   const [bodyHtml, setBodyHtml] = useState("");
+
+  const cloneId = searchParams.clone;
+  const { data: cloneSource } = useQuery({
+    ...campaignQuery(cloneId || ""),
+    enabled: Boolean(cloneId),
+  });
+
+  useEffect(() => {
+    if (cloneSource) {
+      setSubject(`Copy of ${cloneSource.subject}`);
+      setOfferUrl(cloneSource.offer_url || "");
+      setBodyHtml(cloneSource.body_html || "");
+      toast.info("Pre-filled content from cloned campaign");
+    }
+  }, [cloneSource]);
 
   const check = useServerFn(verifyLink);
   const [linkResult, setLinkResult] = useState<LinkCheckResult | null>(null);
@@ -78,7 +98,10 @@ function ComposerPage() {
     }
   };
 
-
+  const insertTag = (tag: string) => {
+    setBodyHtml((prev) => `${prev} ${tag}`);
+    toast.success(`Inserted ${tag}`);
+  };
 
   const save = async (status: "draft" | "send") => {
     const parsed = schema.parse({ subject, offerUrl, bodyHtml });
@@ -93,9 +116,17 @@ function ComposerPage() {
       .single();
     if (error) throw new Error(error.message);
     if (status === "send") {
-      return await send({ data: { campaignId: data.id as string } });
+      void send({ data: { campaignId: data.id as string } })
+        .then(() => {
+          qc.invalidateQueries({ queryKey: ["campaigns"] });
+          qc.invalidateQueries({ queryKey: ["sends"] });
+        })
+        .catch((err: unknown) => {
+          toast.error(err instanceof Error ? err.message : "Campaign delivery could not start");
+          qc.invalidateQueries({ queryKey: ["campaigns"] });
+        });
     }
-    return null;
+    return { campaignId: data.id as string, started: status === "send" };
   };
 
   const draftMutation = useMutationHandler("draft", save, qc, navigate, recipients);
@@ -110,126 +141,143 @@ function ComposerPage() {
         </p>
       </header>
 
-      <Card className="space-y-5 p-5">
-        <div className="space-y-1.5">
-          <Label htmlFor="subject">Subject line</Label>
-          <Input
-            id="subject"
-            value={subject}
-            maxLength={200}
-            placeholder="A little something for you"
-            onChange={(e) => setSubject(e.target.value)}
-          />
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="offer">Offer link</Label>
-          <div className="flex gap-2">
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card className="space-y-5 p-5">
+          <div className="space-y-1.5">
+            <Label htmlFor="subject">Subject line</Label>
             <Input
-              id="offer"
-              value={offerUrl}
-              placeholder="https://example.com/offer"
-              onChange={(e) => setOfferUrl(e.target.value)}
+              id="subject"
+              value={subject}
+              maxLength={200}
+              placeholder="A little something for you"
+              onChange={(e) => setSubject(e.target.value)}
             />
-            <Button
-              type="button"
-              variant="outline"
-              disabled={!offerUrl.trim() || checking}
-              onClick={runCheck}
-            >
-              {checking ? <Loader2 className="size-4 animate-spin" /> : "Check link"}
-            </Button>
           </div>
-          <p className="text-xs text-muted-foreground">
-            Use the toolbar to drop a{" "}
-            <code className="rounded bg-muted px-1 py-0.5">{"{{offer_link}}"}</code>{" "}
-            placeholder into the body. Clicks are tracked before redirecting here.
-          </p>
 
-          {linkResult && (
-            <div
-              className={`mt-2 rounded-md border p-3 text-sm ${
-                linkResult.ok
-                  ? "border-emerald-500/40 bg-emerald-500/5"
-                  : "border-destructive/40 bg-destructive/5"
-              }`}
-            >
-              <div className="flex items-center gap-2 font-medium">
-                {linkResult.ok ? (
-                  <ShieldCheck className="size-4 text-emerald-600" />
-                ) : (
-                  <ShieldAlert className="size-4 text-destructive" />
+          <div className="space-y-1.5">
+            <Label htmlFor="offer">Offer link</Label>
+            <div className="flex gap-2">
+              <Input
+                id="offer"
+                value={offerUrl}
+                placeholder="https://example.com/offer"
+                onChange={(e) => setOfferUrl(e.target.value)}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!offerUrl.trim() || checking}
+                onClick={runCheck}
+              >
+                {checking ? <Loader2 className="size-4 animate-spin" /> : "Check link"}
+              </Button>
+            </div>
+
+            {linkResult && (
+              <div
+                className={`mt-2 rounded-md border p-3 text-sm ${
+                  linkResult.ok
+                    ? "border-emerald-500/40 bg-emerald-500/5"
+                    : "border-destructive/40 bg-destructive/5"
+                }`}
+              >
+                <div className="flex items-center gap-2 font-medium">
+                  {linkResult.ok ? (
+                    <ShieldCheck className="size-4 text-emerald-600" />
+                  ) : (
+                    <ShieldAlert className="size-4 text-destructive" />
+                  )}
+                  {linkResult.ok ? "Secure and reachable" : "This link can't be sent"}
+                  {linkResult.status !== null && (
+                    <span className="text-xs font-normal text-muted-foreground">
+                      HTTP {linkResult.status}
+                    </span>
+                  )}
+                </div>
+                {linkResult.redirected && linkResult.finalUrl && (
+                  <p className="mt-1 break-all text-xs text-muted-foreground">
+                    Resolves to {linkResult.finalUrl}
+                  </p>
                 )}
-                {linkResult.ok ? "Secure and reachable" : "This link can't be sent"}
-                {linkResult.status !== null && (
-                  <span className="text-xs font-normal text-muted-foreground">
-                    HTTP {linkResult.status}
-                  </span>
+                {linkResult.issues.length > 0 && (
+                  <ul className="mt-2 space-y-1">
+                    {linkResult.issues.map((issue, i) => (
+                      <li key={i} className="flex items-start gap-2 text-xs">
+                        <TriangleAlert
+                          className={`mt-0.5 size-3.5 shrink-0 ${
+                            issue.level === "error" ? "text-destructive" : "text-amber-600"
+                          }`}
+                        />
+                        <span>{issue.message}</span>
+                      </li>
+                    ))}
+                  </ul>
                 )}
               </div>
-              {linkResult.redirected && linkResult.finalUrl && (
-                <p className="mt-1 break-all text-xs text-muted-foreground">
-                  Resolves to {linkResult.finalUrl}
-                </p>
-              )}
-              {linkResult.issues.length > 0 && (
-                <ul className="mt-2 space-y-1">
-                  {linkResult.issues.map((issue, i) => (
-                    <li key={i} className="flex items-start gap-2 text-xs">
-                      <TriangleAlert
-                        className={`mt-0.5 size-3.5 shrink-0 ${
-                          issue.level === "error" ? "text-destructive" : "text-amber-600"
-                        }`}
-                      />
-                      <span>{issue.message}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <Label>Body</Label>
+              <div className="flex items-center gap-1.5 text-xs">
+                <Tag className="size-3 text-muted-foreground" />
+                <span className="text-muted-foreground">Tags:</span>
+                <button
+                  type="button"
+                  className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs hover:bg-muted/80"
+                  onClick={() => insertTag("{{name}}")}
+                >
+                  {"{{name}}"}
+                </button>
+                <button
+                  type="button"
+                  className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs hover:bg-muted/80"
+                  onClick={() => insertTag("{{offer_link}}")}
+                >
+                  {"{{offer_link}}"}
+                </button>
+              </div>
             </div>
-          )}
-        </div>
+            <RichTextEditor value={bodyHtml} onChange={setBodyHtml} />
+          </div>
 
+          <div className="flex flex-wrap items-center gap-3 pt-2">
+            <Button
+              variant="outline"
+              disabled={draftMutation.isPending || sendMutation.isPending}
+              onClick={() => draftMutation.mutate()}
+            >
+              Save draft
+            </Button>
+            <Button
+              disabled={
+                sendMutation.isPending ||
+                draftMutation.isPending ||
+                recipients === 0 ||
+                (offerUrl.trim().length > 0 && !linkVerified)
+              }
+              onClick={() => sendMutation.mutate()}
+            >
+              {sendMutation.isPending ? "Starting…" : `Send to ${recipients}`}
+            </Button>
+            {offerUrl.trim().length > 0 && !linkVerified && (
+              <span className="text-xs text-muted-foreground">
+                Verify the offer link before sending.
+              </span>
+            )}
+          </div>
+        </Card>
 
-        <div className="space-y-1.5">
-          <Label>Body</Label>
-          <RichTextEditor value={bodyHtml} onChange={setBodyHtml} />
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3">
-          <Button
-            variant="outline"
-            disabled={draftMutation.isPending || sendMutation.isPending}
-            onClick={() => draftMutation.mutate()}
-          >
-            Save draft
-          </Button>
-          <Button
-            disabled={
-              sendMutation.isPending ||
-              draftMutation.isPending ||
-              recipients === 0 ||
-              (offerUrl.trim().length > 0 && !linkVerified)
-            }
-            onClick={() => sendMutation.mutate()}
-          >
-            {sendMutation.isPending ? "Sending…" : `Send to ${recipients}`}
-          </Button>
-          {offerUrl.trim().length > 0 && !linkVerified && (
-            <span className="text-xs text-muted-foreground">
-              Verify the offer link before sending.
-            </span>
-          )}
-        </div>
-
-      </Card>
+        <CampaignPreview subject={subject} offerUrl={offerUrl} bodyHtml={bodyHtml} />
+      </div>
     </div>
   );
 }
 
 function useMutationHandler(
   mode: "draft" | "send",
-  save: (status: "draft" | "send") => Promise<{ delivered: number; attempted: number } | null>,
+  save: (status: "draft" | "send") => Promise<{ campaignId: string; started: boolean }>,
   qc: ReturnType<typeof useQueryClient>,
   navigate: ReturnType<typeof useNavigate>,
   recipients: number,
@@ -241,10 +289,11 @@ function useMutationHandler(
       qc.invalidateQueries({ queryKey: ["sends"] });
       if (mode === "draft") {
         toast.success("Draft saved");
+        navigate({ to: "/" });
       } else {
-        toast.success(`Sent to ${result?.delivered ?? recipients} recipients`);
+        toast.success(`Sending to ${recipients} recipients`);
+        navigate({ to: "/campaigns/$id", params: { id: result.campaignId } });
       }
-      navigate({ to: "/" });
     },
     onError: (err: unknown) => {
       const message =

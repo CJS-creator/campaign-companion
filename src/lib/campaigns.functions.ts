@@ -3,9 +3,208 @@ import { getRequestUrl } from "@tanstack/react-start/server";
 import { z } from "zod";
 import { inspectUrl, hasBlockingIssue } from "./link-safety";
 
-const sendInput = z.object({ campaignId: z.string().uuid() });
-
 export const FROM_ADDRESS = "onboarding@resend.dev";
+
+const sendInput = z.object({ campaignId: z.string().uuid() });
+const retrySendInput = z.object({ sendId: z.string().uuid() });
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const MAX_ATTEMPTS = 3;
+
+/**
+ * Core background queue worker loop.
+ * Can be triggered asynchronously or via API endpoint.
+ */
+export async function runQueueWorker(targetCampaignId?: string, origin?: string) {
+  const apiKey = process.env["RESEND_API_KEY"];
+  if (!apiKey) {
+    console.error("Worker error: RESEND_API_KEY is not configured.");
+    return;
+  }
+
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { signSendToken } = await import("./link-safety");
+
+  let campaignIds: string[] = [];
+  if (targetCampaignId) {
+    campaignIds = [targetCampaignId];
+  } else {
+    const { data: activeCampaigns } = await supabaseAdmin
+      .from("campaigns")
+      .select("id")
+      .in("status", ["queued", "sending"]);
+    campaignIds = (activeCampaigns ?? []).map((c) => c.id);
+  }
+
+  if (campaignIds.length === 0) return;
+
+  const defaultOrigin = origin || "http://localhost:3000";
+
+  for (const cid of campaignIds) {
+    const { data: campaign } = await supabaseAdmin
+      .from("campaigns")
+      .select("*")
+      .eq("id", cid)
+      .maybeSingle();
+
+    if (!campaign || campaign.status === "sent") continue;
+
+    // Mark campaign as sending
+    await supabaseAdmin.from("campaigns").update({ status: "sending" }).eq("id", cid);
+
+    // Try PL/pgSQL atomic claim function first, fallback to standard query
+    let sends: Array<{ id: string; lead_id: string; attempt_count: number; status: string }> = [];
+    const { data: claimedSends, error: rpcError } = await supabaseAdmin.rpc("claim_queued_sends", {
+      p_campaign_id: cid,
+      p_batch_size: 10,
+    });
+
+    if (!rpcError && claimedSends && claimedSends.length > 0) {
+      sends = claimedSends as typeof sends;
+    } else {
+      const { data: directSends } = await supabaseAdmin
+        .from("sends")
+        .select("id, lead_id, attempt_count, status")
+        .eq("campaign_id", cid)
+        .in("status", ["queued", "failed"])
+        .lt("attempt_count", MAX_ATTEMPTS);
+      sends = directSends ?? [];
+    }
+
+    if (!sends || sends.length === 0) {
+      const { data: remainingPending } = await supabaseAdmin
+        .from("sends")
+        .select("id")
+        .eq("campaign_id", cid)
+        .in("status", ["queued", "sending"]);
+
+      if (!remainingPending || remainingPending.length === 0) {
+        await supabaseAdmin
+          .from("campaigns")
+          .update({ status: "sent", sent_at: new Date().toISOString() })
+          .eq("id", cid);
+      }
+      continue;
+    }
+
+    const leadIds = Array.from(new Set(sends.map((s) => s.lead_id)));
+    const { data: leads } = await supabaseAdmin
+      .from("leads")
+      .select("id, email, name")
+      .in("id", leadIds);
+
+    const leadById = new Map((leads ?? []).map((l) => [l.id, l]));
+
+    const BATCH_SIZE = 2;
+    let adaptivePauseMs = 1100;
+
+    const deliverOne = async (send: { id: string; lead_id: string; attempt_count: number }) => {
+      const lead = leadById.get(send.lead_id);
+      if (!lead) {
+        await supabaseAdmin
+          .from("sends")
+          .update({ status: "failed", failure_reason: "Recipient lead record not found" })
+          .eq("id", send.id);
+        return;
+      }
+
+      const sig = signSendToken(send.id);
+      const clickUrl = `${defaultOrigin}/track/click?send_id=${send.id}&sig=${sig}`;
+      const pixelUrl = `${defaultOrigin}/track/open?send_id=${send.id}&sig=${sig}`;
+
+      let html = campaign.body_html || "";
+      html = html.replaceAll("{{offer_link}}", clickUrl);
+      html = html.replaceAll("{{name}}", lead.name ?? "there");
+      if (campaign.offer_url) {
+        html = html.replaceAll(campaign.offer_url, clickUrl);
+      }
+      html += `<img src="${pixelUrl}" width="1" height="1" alt="" style="display:block;border:0;" />`;
+
+      const attempt = send.attempt_count + 1;
+      await supabaseAdmin
+        .from("sends")
+        .update({
+          status: "sending",
+          attempt_count: attempt,
+          last_attempt_at: new Date().toISOString(),
+          failure_reason: null,
+        })
+        .eq("id", send.id);
+
+      try {
+        const res = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            from: FROM_ADDRESS,
+            to: [lead.email],
+            subject: campaign.subject,
+            html,
+          }),
+        });
+
+        if (res.ok) {
+          await supabaseAdmin
+            .from("sends")
+            .update({ status: "sent", sent_at: new Date().toISOString(), failure_reason: null })
+            .eq("id", send.id);
+          return;
+        }
+
+        // Adaptive rate limiting check on 429/503 responses
+        const retryAfter = res.headers.get("retry-after");
+        if (res.status === 429 || res.status === 503) {
+          const pauseSec = retryAfter ? parseInt(retryAfter, 10) || 3 : 3;
+          adaptivePauseMs = Math.max(adaptivePauseMs, pauseSec * 1000);
+        }
+
+        const body = (await res.text()).replaceAll(/\s+/g, " ").slice(0, 300);
+        const failureReason = `Resend returned ${res.status}${body ? `: ${body}` : ""}`;
+
+        // Hard bounce / invalid email handling
+        if (res.status === 400 || body.toLowerCase().includes("invalid")) {
+          await supabaseAdmin.from("leads").update({ subscribed: false }).eq("id", lead.id);
+        }
+
+        await supabaseAdmin
+          .from("sends")
+          .update({ status: "failed", failure_reason: failureReason })
+          .eq("id", send.id);
+      } catch (err) {
+        const failureReason = err instanceof Error ? err.message : "Resend request error";
+        await supabaseAdmin
+          .from("sends")
+          .update({ status: "failed", failure_reason: failureReason })
+          .eq("id", send.id);
+      }
+    };
+
+    for (let i = 0; i < sends.length; i += BATCH_SIZE) {
+      const batch = sends.slice(i, i + BATCH_SIZE);
+      await Promise.all(batch.map(deliverOne));
+      if (i + BATCH_SIZE < sends.length) {
+        await wait(adaptivePauseMs);
+      }
+    }
+
+    // Final check for completion of this campaign
+    const { data: remainingUnfinished } = await supabaseAdmin
+      .from("sends")
+      .select("id")
+      .eq("campaign_id", cid)
+      .in("status", ["queued", "sending"]);
+
+    if (!remainingUnfinished || remainingUnfinished.length === 0) {
+      await supabaseAdmin
+        .from("campaigns")
+        .update({ status: "sent", sent_at: new Date().toISOString() })
+        .eq("id", cid);
+    }
+  }
+}
 
 
 export const sendCampaign = createServerFn({ method: "POST" })
@@ -26,9 +225,11 @@ export const sendCampaign = createServerFn({ method: "POST" })
       .maybeSingle();
     if (campaignError) throw new Error(campaignError.message);
     if (!campaign) throw new Error("Campaign not found.");
-    if (campaign.status === "sent") throw new Error("This campaign has already been sent.");
+    if (campaign.status !== "draft") {
+      throw new Error("This campaign has already been started.");
+    }
 
-    // Security gate: every URL that goes out must pass the link checks.
+    // Security gate: check links
     const urlsToCheck = new Set<string>();
     if (campaign.offer_url) urlsToCheck.add(campaign.offer_url);
     for (const match of (campaign.body_html || "").matchAll(/href\s*=\s*["']([^"']+)["']/gi)) {
@@ -44,7 +245,6 @@ export const sendCampaign = createServerFn({ method: "POST" })
       }
     }
 
-
     const { data: leads, error: leadsError } = await supabaseAdmin
       .from("leads")
       .select("id, email, name")
@@ -52,82 +252,94 @@ export const sendCampaign = createServerFn({ method: "POST" })
     if (leadsError) throw new Error(leadsError.message);
     if (!leads || leads.length === 0) throw new Error("No subscribed leads to send to.");
 
-    const { data: sends, error: sendsError } = await supabaseAdmin
+    // Claim draft
+    const { data: claimedCampaign, error: claimError } = await supabaseAdmin
+      .from("campaigns")
+      .update({ status: "queued" })
+      .eq("id", campaign.id)
+      .eq("status", "draft")
+      .select("id")
+      .maybeSingle();
+    if (claimError) throw new Error(claimError.message);
+    if (!claimedCampaign) throw new Error("This campaign is already being processed.");
+
+    // Insert queued send records
+    const { error: sendsError } = await supabaseAdmin
       .from("sends")
-      .insert(leads.map((lead) => ({ campaign_id: campaign.id, lead_id: lead.id })))
-      .select("id, lead_id");
-    if (sendsError) throw new Error(sendsError.message);
-
-    const leadById = new Map(leads.map((l) => [l.id, l]));
-    let delivered = 0;
-    const failures: string[] = [];
-
-    // Throttled batch sending: one email per recipient (never bcc/grouped),
-    // BATCH_SIZE per second so we stay under provider limits and out of spam filters.
-    const BATCH_SIZE = 2;
-    const BATCH_PAUSE_MS = 1100;
-    const allSends = (sends ?? []).filter((s) => leadById.has(s.lead_id));
-
-    const deliverOne = async (send: { id: string; lead_id: string }) => {
-      const lead = leadById.get(send.lead_id)!;
-
-      const clickUrl = `${origin}/track/click?send_id=${send.id}`;
-      const pixelUrl = `${origin}/track/open?send_id=${send.id}`;
-
-      let html = campaign.body_html || "";
-      html = html.replaceAll("{{offer_link}}", clickUrl);
-      html = html.replaceAll("{{name}}", lead.name ?? "there");
-      if (campaign.offer_url) {
-        html = html.replaceAll(campaign.offer_url, clickUrl);
-      }
-      html += `<img src="${pixelUrl}" width="1" height="1" alt="" style="display:block;border:0;" />`;
-
-      try {
-        const res = await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
-            from: FROM_ADDRESS,
-            to: [lead.email],
-            subject: campaign.subject,
-            html,
-          }),
-        });
-
-        if (!res.ok) {
-          const body = await res.text();
-          console.error(`Resend failed [${res.status}] for ${lead.email}: ${body}`);
-          failures.push(`${lead.email}: ${res.status}`);
-          return;
-        }
-
-        await supabaseAdmin
-          .from("sends")
-          .update({ sent_at: new Date().toISOString() })
-          .eq("id", send.id);
-        delivered += 1;
-      } catch (err) {
-        console.error("Resend request error", err);
-        failures.push(`${lead.email}: request failed`);
-      }
-    };
-
-    for (let i = 0; i < allSends.length; i += BATCH_SIZE) {
-      const batch = allSends.slice(i, i + BATCH_SIZE);
-      await Promise.all(batch.map(deliverOne));
-      if (i + BATCH_SIZE < allSends.length) {
-        await new Promise((resolve) => setTimeout(resolve, BATCH_PAUSE_MS));
-      }
+      .insert(
+        leads.map((lead) => ({
+          campaign_id: campaign.id,
+          lead_id: lead.id,
+          status: "queued",
+          attempt_count: 0,
+        })),
+      );
+    if (sendsError) {
+      await supabaseAdmin.from("campaigns").update({ status: "draft" }).eq("id", campaign.id);
+      throw new Error(sendsError.message);
     }
 
+    // Launch worker in background without blocking response
+    runQueueWorker(campaign.id, origin).catch((err) => {
+      console.error("Queue worker background failure:", err);
+    });
+
+    return { queued: true, count: leads.length };
+  });
+
+export const retryFailedSends = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => sendInput.parse(data))
+  .handler(async ({ data }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const origin = new URL(getRequestUrl()).origin;
+
+    const { error: sendsError } = await supabaseAdmin
+      .from("sends")
+      .update({ status: "queued", failure_reason: null, attempt_count: 0 })
+      .eq("campaign_id", data.campaignId)
+      .eq("status", "failed");
+
+    if (sendsError) throw new Error(sendsError.message);
 
     await supabaseAdmin
       .from("campaigns")
-      .update({ status: "sent", sent_at: new Date().toISOString() })
-      .eq("id", campaign.id);
+      .update({ status: "sending" })
+      .eq("id", data.campaignId);
 
-    return { delivered, attempted: leads.length, failures };
+    runQueueWorker(data.campaignId, origin).catch((err) => {
+      console.error("Retry failed sends worker error:", err);
+    });
+
+    return { success: true };
+  });
+
+export const retrySingleSend = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => retrySendInput.parse(data))
+  .handler(async ({ data }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const origin = new URL(getRequestUrl()).origin;
+
+    const { data: send } = await supabaseAdmin
+      .from("sends")
+      .select("id, campaign_id")
+      .eq("id", data.sendId)
+      .maybeSingle();
+
+    if (!send) throw new Error("Send record not found.");
+
+    await supabaseAdmin
+      .from("sends")
+      .update({ status: "queued", failure_reason: null, attempt_count: 0 })
+      .eq("id", send.id);
+
+    await supabaseAdmin
+      .from("campaigns")
+      .update({ status: "sending" })
+      .eq("id", send.campaign_id);
+
+    runQueueWorker(send.campaign_id, origin).catch((err) => {
+      console.error("Retry single send worker error:", err);
+    });
+
+    return { success: true };
   });
