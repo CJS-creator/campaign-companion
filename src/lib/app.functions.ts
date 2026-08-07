@@ -10,7 +10,9 @@ async function guard() {
   return supabaseAdmin;
 }
 
-async function audit(action: string, details: Record<string, unknown>) {
+type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+
+async function audit(action: string, details: Record<string, JsonValue>) {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   await supabaseAdmin.from("audit_logs").insert({ action, details });
 }
@@ -279,5 +281,5 @@ export const fetchAuditLogs = createServerFn({ method: "GET" })
       .order("created_at", { ascending: false })
       .limit(data.limit);
     if (error) throw new Error(error.message);
-    return (rows ?? []) as Array<{ id: string; action: string; details: Record<string, unknown>; created_at: string }>;
+    return (rows ?? []) as Array<{ id: string; action: string; details: JsonValue; created_at: string }>;
   });
