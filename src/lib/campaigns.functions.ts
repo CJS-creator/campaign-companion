@@ -40,6 +40,7 @@ export async function runQueueWorker(targetCampaignId?: string, origin?: string)
   const fromAddress = settings?.from_address || FROM_ADDRESS;
 
   // Sending caps (deliverability / reputation safeguard)
+  const enforceCaps = settings?.enforce_caps ?? true;
   const dailyCap = settings?.daily_cap ?? 100;
   const monthlyCap = settings?.monthly_cap ?? 3000;
   const now = new Date();
@@ -53,12 +54,13 @@ export async function runQueueWorker(targetCampaignId?: string, origin?: string)
       .gte("sent_at", since);
     return count ?? 0;
   };
-  let remainingToday = dailyCap - (await countSince(dayStart));
-  let remainingMonth = monthlyCap - (await countSince(monthStart));
+  let remainingToday = enforceCaps ? dailyCap - (await countSince(dayStart)) : Number.MAX_SAFE_INTEGER;
+  let remainingMonth = enforceCaps ? monthlyCap - (await countSince(monthStart)) : Number.MAX_SAFE_INTEGER;
   if (remainingToday <= 0 || remainingMonth <= 0) {
     console.warn("Worker: sending cap reached, deferring queue.");
     return;
   }
+
 
 
   let campaignIds: string[] = [];
@@ -290,6 +292,9 @@ export async function runQueueWorker(targetCampaignId?: string, origin?: string)
 export const sendCampaign = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => sendInput.parse(data))
   .handler(async ({ data }) => {
+    const { assertOwner } = await import("./owner-guard.server");
+    assertOwner();
+
     const apiKey = process.env["RESEND_API_KEY"];
     if (!apiKey) {
       throw new Error("RESEND_API_KEY is not configured.");
@@ -309,6 +314,14 @@ export const sendCampaign = createServerFn({ method: "POST" })
       throw new Error("This campaign has already been started or queued.");
     }
 
+    const { data: sendSettings } = await supabaseAdmin
+      .from("settings")
+      .select("require_link_check, block_url_shorteners")
+      .eq("id", "default")
+      .maybeSingle();
+    const requireLinkCheck = sendSettings?.require_link_check ?? true;
+    const blockShorteners = sendSettings?.block_url_shorteners ?? true;
+
     // Security gate: check links
     const urlsToCheck = new Set<string>();
     if (campaign.offer_url) urlsToCheck.add(campaign.offer_url);
@@ -323,7 +336,25 @@ export const sendCampaign = createServerFn({ method: "POST" })
           `Unsafe link blocked (${candidate}): ${issues.find((i) => i.level === "error")?.message}`,
         );
       }
+      if (blockShorteners && issues.some((i) => i.message.startsWith("Shortened links"))) {
+        throw new Error(`Shortened link blocked (${candidate}). Use the full destination URL.`);
+      }
+      if (requireLinkCheck) {
+        try {
+          const probe = await fetch(candidate, { method: "GET", redirect: "follow" });
+          if (probe.status >= 400) {
+            throw new Error(`Link check failed (${candidate}): HTTP ${probe.status}`);
+          }
+        } catch (error) {
+          throw new Error(
+            error instanceof Error && error.message.startsWith("Link check failed")
+              ? error.message
+              : `Link check failed (${candidate}): the URL could not be reached.`,
+          );
+        }
+      }
     }
+
 
     // Recipient snapshotting: only select subscribed leads with active suppression status
     const { data: leads, error: leadsError } = await supabaseAdmin
@@ -383,6 +414,9 @@ export const sendCampaign = createServerFn({ method: "POST" })
 export const scheduleCampaign = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => scheduleInput.parse(data))
   .handler(async ({ data }) => {
+    const { assertOwner } = await import("./owner-guard.server");
+    assertOwner();
+
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const { data: campaign } = await supabaseAdmin
@@ -424,6 +458,9 @@ export const scheduleCampaign = createServerFn({ method: "POST" })
 export const retryFailedSends = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => sendInput.parse(data))
   .handler(async ({ data }) => {
+    const { assertOwner } = await import("./owner-guard.server");
+    assertOwner();
+
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const origin = new URL(getRequestUrl()).origin;
 
@@ -456,6 +493,9 @@ export const retryFailedSends = createServerFn({ method: "POST" })
 export const retrySingleSend = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => retrySendInput.parse(data))
   .handler(async ({ data }) => {
+    const { assertOwner } = await import("./owner-guard.server");
+    assertOwner();
+
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const origin = new URL(getRequestUrl()).origin;
 

@@ -3,7 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Download, Upload, Loader2 } from "lucide-react";
 import { z } from "zod";
-import { supabase } from "@/integrations/supabase/client";
+import { importLeads } from "@/lib/app.functions";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 
@@ -89,32 +89,9 @@ export function LeadImport() {
       let duplicates = 0;
 
       if (valid.length > 0) {
-        const { data: existing, error: existingError } = await supabase
-          .from("leads")
-          .select("email")
-          .in(
-            "email",
-            valid.map((v) => v.email),
-          );
-        if (existingError) throw new Error(existingError.message);
-
-        const known = new Set((existing ?? []).map((e) => e.email));
-        const fresh = valid.filter((v) => !known.has(v.email));
-        duplicates = valid.length - fresh.length;
-
-        const importedAt = new Date().toISOString();
-        for (let i = 0; i < fresh.length; i += 200) {
-          const chunk = fresh.slice(i, i + 200).map((row) => ({
-            ...row,
-            consent_source: "import",
-            consent_date: importedAt,
-            consent_note: `Bulk spreadsheet import on ${importedAt}`,
-          }));
-          const { error } = await supabase.from("leads").insert(chunk);
-          if (error) throw new Error(error.message);
-          added += chunk.length;
-        }
-
+        const result = await importLeads({ data: { rows: valid } });
+        added = result.added;
+        duplicates = result.duplicates;
       }
 
       setSummary({ added, duplicates, invalid });

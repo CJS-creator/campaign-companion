@@ -4,8 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { toast } from "sonner";
 import { Download, Search, Trash2, UserX, UserCheck, X } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
 import { LEADS_PAGE_SIZE, leadsPageQuery, type Lead, type LeadSort } from "@/lib/data";
+import { createLead, deleteLeads, fetchLeads, setLeadSubscription } from "@/lib/app.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -73,19 +73,7 @@ function LeadsPage() {
   const addLead = useMutation({
     mutationFn: async () => {
       const parsed = leadSchema.parse({ email, name });
-      const { error } = await supabase
-        .from("leads")
-        .insert({
-          email: parsed.email.toLowerCase(),
-          name: parsed.name || null,
-          consent_source: "manual",
-          consent_date: new Date().toISOString(),
-          consent_note: "Added manually by the owner",
-        });
-
-      if (error) {
-        throw new Error(error.code === "23505" ? "That email is already on the list." : error.message);
-      }
+      await createLead({ data: { email: parsed.email, name: parsed.name || undefined } });
     },
     onSuccess: () => {
       setEmail("");
@@ -103,8 +91,7 @@ function LeadsPage() {
 
   const toggleSubscribed = useMutation({
     mutationFn: async (lead: Lead) => {
-      const { error } = await supabase.from("leads").update({ subscribed: !lead.subscribed }).eq("id", lead.id);
-      if (error) throw error;
+      await setLeadSubscription({ data: { ids: [lead.id], subscribed: !lead.subscribed } });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["leads"] }),
     onError: () => toast.error("Could not update lead"),
@@ -112,14 +99,9 @@ function LeadsPage() {
 
   const bulkSubscriptionMutation = useMutation({
     mutationFn: async (subscribe: boolean) => {
-      const ids = Array.from(selectedIds);
-      const { error } = await supabase
-        .from("leads")
-        .update({ subscribed: subscribe })
-        .in("id", ids);
-      if (error) throw error;
+      await setLeadSubscription({ data: { ids: Array.from(selectedIds), subscribed: subscribe } });
     },
-    onSuccess: (_, subscribe) => {
+    onSuccess: () => {
       toast.success(`Updated subscription for ${selectedIds.size} leads`);
       setSelectedIds(new Set());
       qc.invalidateQueries({ queryKey: ["leads"] });
@@ -129,9 +111,7 @@ function LeadsPage() {
 
   const bulkDeleteMutation = useMutation({
     mutationFn: async () => {
-      const ids = Array.from(selectedIds);
-      const { error } = await supabase.from("leads").delete().in("id", ids);
-      if (error) throw error;
+      await deleteLeads({ data: { ids: Array.from(selectedIds) } });
     },
     onSuccess: () => {
       toast.success(`Deleted ${selectedIds.size} leads`);
@@ -146,17 +126,13 @@ function LeadsPage() {
       toast.info("No leads to export yet");
       return;
     }
-    const normalizedSearch = deferredSearch.trim().replace(/[%,()]/g, "\\$&");
-    let query = supabase.from("leads").select("*").order("created_at", { ascending: false });
-    if (normalizedSearch) {
-      query = query.or(`email.ilike.%${normalizedSearch}%,name.ilike.%${normalizedSearch}%`);
-    }
-    const { data, error } = await query;
-    if (error) {
+    let exportLeads: Lead[];
+    try {
+      exportLeads = await fetchLeads({ data: { search: deferredSearch } });
+    } catch {
       toast.error("Could not export leads");
       return;
     }
-    const exportLeads = (data ?? []) as Lead[];
     const escape = (value: string) => `"${value.replaceAll('"', '""')}"`;
     const rows = [
       ["email", "name", "subscribed", "created_at"],

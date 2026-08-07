@@ -15,6 +15,9 @@ export type LinkCheckResult = {
 export const verifyLink = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => input.parse(data))
   .handler(async ({ data }): Promise<LinkCheckResult> => {
+    const { assertOwner } = await import("./owner-guard.server");
+    assertOwner();
+
     const { url, issues } = inspectUrl(data.url);
     if (!url || hasBlockingIssue(issues)) {
       return { ok: false, finalUrl: null, status: null, redirected: false, issues };
