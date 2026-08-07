@@ -62,9 +62,14 @@ export const sendCampaign = createServerFn({ method: "POST" })
     let delivered = 0;
     const failures: string[] = [];
 
-    for (const send of sends ?? []) {
-      const lead = leadById.get(send.lead_id);
-      if (!lead) continue;
+    // Throttled batch sending: one email per recipient (never bcc/grouped),
+    // BATCH_SIZE per second so we stay under provider limits and out of spam filters.
+    const BATCH_SIZE = 2;
+    const BATCH_PAUSE_MS = 1100;
+    const allSends = (sends ?? []).filter((s) => leadById.has(s.lead_id));
+
+    const deliverOne = async (send: { id: string; lead_id: string }) => {
+      const lead = leadById.get(send.lead_id)!;
 
       const clickUrl = `${origin}/track/click?send_id=${send.id}`;
       const pixelUrl = `${origin}/track/open?send_id=${send.id}`;
@@ -96,7 +101,7 @@ export const sendCampaign = createServerFn({ method: "POST" })
           const body = await res.text();
           console.error(`Resend failed [${res.status}] for ${lead.email}: ${body}`);
           failures.push(`${lead.email}: ${res.status}`);
-          continue;
+          return;
         }
 
         await supabaseAdmin
@@ -108,7 +113,16 @@ export const sendCampaign = createServerFn({ method: "POST" })
         console.error("Resend request error", err);
         failures.push(`${lead.email}: request failed`);
       }
+    };
+
+    for (let i = 0; i < allSends.length; i += BATCH_SIZE) {
+      const batch = allSends.slice(i, i + BATCH_SIZE);
+      await Promise.all(batch.map(deliverOne));
+      if (i + BATCH_SIZE < allSends.length) {
+        await new Promise((resolve) => setTimeout(resolve, BATCH_PAUSE_MS));
+      }
     }
+
 
     await supabaseAdmin
       .from("campaigns")
