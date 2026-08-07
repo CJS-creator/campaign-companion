@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { toast } from "sonner";
+import { Download } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { leadsQuery, type Lead } from "@/lib/data";
 import { Button } from "@/components/ui/button";
@@ -87,14 +88,46 @@ function LeadsPage() {
 
   const subscribedCount = leads.filter((l) => l.subscribed).length;
 
+  const exportCsv = () => {
+    if (leads.length === 0) {
+      toast.info("No leads to export yet");
+      return;
+    }
+    const escape = (value: string) => `"${value.replaceAll('"', '""')}"`;
+    const rows = [
+      ["email", "name", "subscribed", "created_at"],
+      ...leads.map((l) => [
+        l.email,
+        l.name ?? "",
+        l.subscribed ? "true" : "false",
+        l.created_at,
+      ]),
+    ];
+    const csv = rows.map((r) => r.map((cell) => escape(String(cell))).join(",")).join("\r\n");
+    const url = URL.createObjectURL(new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `leads-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    toast.success(`Exported ${leads.length} ${leads.length === 1 ? "lead" : "leads"}`);
+  };
+
   return (
     <div className="space-y-8">
-      <header>
-        <h1 className="text-3xl font-semibold tracking-tight">Leads</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {leads.length} total · {subscribedCount} subscribed
-        </p>
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-semibold tracking-tight">Leads</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {leads.length} total · {subscribedCount} subscribed
+          </p>
+        </div>
+        <Button type="button" variant="outline" onClick={exportCsv}>
+          <Download className="size-4" />
+          Export CSV
+        </Button>
       </header>
+
 
       <Card className="p-5">
         <form
