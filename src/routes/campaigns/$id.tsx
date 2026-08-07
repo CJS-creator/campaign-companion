@@ -1,13 +1,38 @@
+import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, RefreshCw, AlertCircle, CheckCircle2, Copy } from "lucide-react";
+import {
+  ArrowLeft,
+  RefreshCw,
+  AlertCircle,
+  CheckCircle2,
+  Copy,
+  Calendar,
+  Play,
+  XCircle,
+  OctagonX,
+  Clock,
+} from "lucide-react";
 import { campaignQuery, leadsQuery, sendsQuery, type Send } from "@/lib/data";
-import { retryFailedSends, retrySingleSend } from "@/lib/campaigns.functions";
+import {
+  retryFailedSends,
+  retrySingleSend,
+  sendScheduledNow,
+  cancelScheduledCampaign,
+  stopCampaignSending,
+  resumeCampaignSending,
+  rescheduleCampaign,
+} from "@/lib/campaigns.functions";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { SendTestEmailDialog } from "@/components/SendTestEmailDialog";
+import { CheckSendingOptionDialog } from "@/components/CheckSendingOptionDialog";
 
 export const Route = createFileRoute("/campaigns/$id")({
   head: () => ({
@@ -26,6 +51,9 @@ export const Route = createFileRoute("/campaigns/$id")({
 function CampaignDetail() {
   const { id } = Route.useParams();
   const queryClient = useQueryClient();
+
+  const [isRescheduleOpen, setIsRescheduleOpen] = useState(false);
+  const [newScheduleTime, setNewScheduleTime] = useState("");
 
   const { data: campaign, isLoading } = useQuery({
     ...campaignQuery(id),
@@ -65,6 +93,67 @@ function CampaignDetail() {
     },
   });
 
+  const sendNowMutation = useMutation({
+    mutationFn: () => sendScheduledNow({ data: { campaignId: id } }),
+    onSuccess: () => {
+      toast.success("Campaign queue started now!");
+      queryClient.invalidateQueries({ queryKey: ["campaign", id] });
+      queryClient.invalidateQueries({ queryKey: ["sends"] });
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Failed to start sending");
+    },
+  });
+
+  const cancelScheduleMutation = useMutation({
+    mutationFn: () => cancelScheduledCampaign({ data: { campaignId: id } }),
+    onSuccess: () => {
+      toast.success("Scheduled campaign reverted to draft");
+      queryClient.invalidateQueries({ queryKey: ["campaign", id] });
+      queryClient.invalidateQueries({ queryKey: ["sends"] });
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Failed to cancel schedule");
+    },
+  });
+
+  const rescheduleMutation = useMutation({
+    mutationFn: () => rescheduleCampaign({ data: { campaignId: id, scheduledFor: newScheduleTime } }),
+    onSuccess: () => {
+      toast.success("Campaign rescheduled successfully!");
+      setIsRescheduleOpen(false);
+      queryClient.invalidateQueries({ queryKey: ["campaign", id] });
+      queryClient.invalidateQueries({ queryKey: ["sends"] });
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Failed to reschedule campaign");
+    },
+  });
+
+  const stopSendingMutation = useMutation({
+    mutationFn: () => stopCampaignSending({ data: { campaignId: id } }),
+    onSuccess: (res) => {
+      toast.success(`Stopped campaign sending. Skipped ${res.skippedCount} unsent email(s).`);
+      queryClient.invalidateQueries({ queryKey: ["campaign", id] });
+      queryClient.invalidateQueries({ queryKey: ["sends"] });
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Failed to stop campaign sending");
+    },
+  });
+
+  const resumeSendingMutation = useMutation({
+    mutationFn: () => resumeCampaignSending({ data: { campaignId: id } }),
+    onSuccess: () => {
+      toast.success("Resumed campaign delivery worker!");
+      queryClient.invalidateQueries({ queryKey: ["campaign", id] });
+      queryClient.invalidateQueries({ queryKey: ["sends"] });
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Failed to resume campaign sending");
+    },
+  });
+
   const rows = sends.filter((send) => send.campaign_id === id);
   const leadById = new Map(leads.map((lead) => [lead.id, lead]));
   const delivered = rows.filter((send) => send.status === "sent").length;
@@ -78,6 +167,7 @@ function CampaignDetail() {
   if (!campaign) return <p className="text-muted-foreground">Campaign not found.</p>;
 
   const isProcessing = campaign.status === "queued" || campaign.status === "sending";
+  const isScheduled = campaign.status === "scheduled";
 
   return (
     <div className="space-y-8">
@@ -88,10 +178,13 @@ function CampaignDetail() {
           </Button>
           <h1 className="mt-2 text-3xl font-semibold tracking-tight">{campaign.subject}</h1>
           <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-            <Badge variant={campaign.status === "sent" ? "default" : isProcessing ? "secondary" : "outline"}>
-              {campaign.status}
+            <Badge variant={campaign.status === "sent" ? "default" : isProcessing ? "secondary" : isScheduled ? "outline" : "outline"} className={isScheduled ? "bg-purple-500/10 text-purple-700 border-purple-500/30 font-semibold" : campaign.status === "cancelled" ? "bg-destructive/10 text-destructive border-destructive/30" : ""}>
+              {isScheduled ? "Scheduled" : campaign.status}
             </Badge>
             {campaign.sent_at && <span>Completed {new Date(campaign.sent_at).toLocaleString()}</span>}
+            {campaign.scheduled_for && isScheduled && (
+              <span className="text-purple-600 font-medium">Scheduled for {new Date(campaign.scheduled_for).toLocaleString()}</span>
+            )}
             {failed > 0 && (
               <span className="flex items-center gap-1 text-destructive text-xs font-medium">
                 <AlertCircle className="size-3.5" /> {failed} send{failed === 1 ? "" : "s"} failed
@@ -100,12 +193,39 @@ function CampaignDetail() {
           </div>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <CheckSendingOptionDialog campaignId={campaign.id} />
+          <SendTestEmailDialog campaignId={campaign.id} campaignSubject={campaign.subject} />
+
           <Button asChild variant="outline">
             <Link to="/campaigns/new" search={{ clone: campaign.id }}>
               <Copy className="size-4" /> Duplicate campaign
             </Link>
           </Button>
+
+          {isProcessing && (
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => stopSendingMutation.mutate()}
+              disabled={stopSendingMutation.isPending}
+            >
+              <OctagonX className="size-4 mr-1" /> Stop Sending
+            </Button>
+          )}
+
+          {campaign.status === "cancelled" && (
+            <Button
+              type="button"
+              variant="default"
+              className="bg-emerald-600 hover:bg-emerald-700"
+              onClick={() => resumeSendingMutation.mutate()}
+              disabled={resumeSendingMutation.isPending}
+            >
+              <Play className="size-4 mr-1" /> Resume Sending
+            </Button>
+          )}
+
           {failed > 0 && !isProcessing && (
             <Button
               type="button"
@@ -121,6 +241,90 @@ function CampaignDetail() {
         </div>
       </div>
 
+      {isScheduled && (
+        <Card className="space-y-4 p-5 border-purple-500/30 bg-purple-500/5">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="space-y-1">
+              <h2 className="font-semibold text-purple-900 flex items-center gap-2">
+                <Calendar className="size-5 text-purple-600" />
+                Scheduled Send Queue
+              </h2>
+              <p className="text-sm text-purple-700">
+                This campaign is scheduled to be automatically delivered on{" "}
+                <strong>{new Date(campaign.scheduled_for!).toLocaleString()}</strong> to {campaign.recipient_count} recipients.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-purple-300 text-purple-800 hover:bg-purple-100"
+                onClick={() => {
+                  if (campaign.scheduled_for) {
+                    setNewScheduleTime(new Date(campaign.scheduled_for).toISOString().slice(0, 16));
+                  }
+                  setIsRescheduleOpen(true);
+                }}
+              >
+                <Clock className="size-3.5 mr-1" /> Reschedule
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-purple-300 text-purple-800 hover:bg-purple-100"
+                onClick={() => sendNowMutation.mutate()}
+                disabled={sendNowMutation.isPending}
+              >
+                <Play className="size-3.5 mr-1" /> Send Immediately
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-destructive/30 text-destructive hover:bg-destructive/10"
+                onClick={() => cancelScheduleMutation.mutate()}
+                disabled={cancelScheduleMutation.isPending}
+              >
+                <XCircle className="size-3.5 mr-1" /> Cancel Schedule
+              </Button>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* Reschedule Dialog */}
+      <Dialog open={isRescheduleOpen} onOpenChange={setIsRescheduleOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Clock className="size-5 text-purple-600" />
+              Reschedule Campaign
+            </DialogTitle>
+            <DialogDescription>
+              Select a new date and time for this campaign to automatically send.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="rescheduleTime" className="text-xs font-medium">New Send Date & Time (IST)</Label>
+              <Input
+                id="rescheduleTime"
+                type="datetime-local"
+                value={newScheduleTime}
+                onChange={(e) => setNewScheduleTime(e.target.value)}
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setIsRescheduleOpen(false)}>Cancel</Button>
+              <Button
+                disabled={rescheduleMutation.isPending || !newScheduleTime}
+                onClick={() => rescheduleMutation.mutate()}
+              >
+                {rescheduleMutation.isPending ? "Rescheduling…" : "Save New Schedule"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Card className="p-5">
         <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-muted-foreground">Preview</h2>
@@ -199,7 +403,7 @@ function CampaignDetail() {
 function SendStatusBadge({ send }: { send: Send }) {
   if (send.status === "failed") return <Badge variant="destructive">Failed (Attempt {send.attempt_count})</Badge>;
   if (send.status === "sending") return <Badge variant="secondary">Sending (Attempt {send.attempt_count})</Badge>;
+  if (send.status === "skipped") return <Badge variant="outline" className="text-muted-foreground">Skipped</Badge>;
   if (send.status === "sent") return <Badge className="bg-emerald-600 hover:bg-emerald-700"><CheckCircle2 className="size-3 mr-1 inline" /> Sent</Badge>;
   return <Badge variant="outline">Queued</Badge>;
 }
-

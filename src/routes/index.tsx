@@ -5,6 +5,9 @@ import { campaignsQuery, sendsQuery } from "@/lib/data";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { SendTestEmailDialog } from "@/components/SendTestEmailDialog";
+
+import { CheckSendingOptionDialog } from "@/components/CheckSendingOptionDialog";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -97,7 +100,8 @@ function Dashboard() {
             Performance across all marketing campaigns.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <CheckSendingOptionDialog />
           <Button type="button" variant="outline" onClick={exportMetrics} disabled={campaigns.length === 0}>
             <Download className="size-4" /> Export metrics
           </Button>
@@ -157,6 +161,7 @@ function Dashboard() {
               const opened = rows.filter((s) => s.opened_at).length;
               const clicked = rows.filter((s) => s.clicked_at).length;
               const isProcessing = campaign.status === "queued" || campaign.status === "sending";
+              const isScheduled = campaign.status === "scheduled";
 
               return (
                 <tr key={campaign.id} className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors">
@@ -169,12 +174,17 @@ function Dashboard() {
                       {campaign.subject}
                     </Link>
                     <div className="text-xs text-muted-foreground">
-                      {new Date(campaign.created_at).toLocaleDateString()}
+                      {isScheduled && campaign.scheduled_for
+                        ? `Scheduled for ${new Date(campaign.scheduled_for).toLocaleString()}`
+                        : new Date(campaign.created_at).toLocaleDateString()}
                     </div>
                   </td>
                   <td className="px-5 py-3">
-                    <Badge variant={campaign.status === "sent" ? "default" : isProcessing ? "secondary" : "outline"}>
-                      {campaign.status}
+                    <Badge
+                      variant={campaign.status === "sent" ? "default" : isProcessing ? "secondary" : "outline"}
+                      className={isScheduled ? "bg-purple-500/10 text-purple-700 border-purple-500/30 font-medium" : ""}
+                    >
+                      {isScheduled ? "Scheduled" : campaign.status}
                     </Badge>
                   </td>
                   <td className="px-5 py-3">{sent}</td>
@@ -186,11 +196,14 @@ function Dashboard() {
                     <span className="text-muted-foreground">({pct(clicked, sent)})</span>
                   </td>
                   <td className="px-5 py-3 text-right">
-                    <Button asChild size="sm" variant="ghost" className="h-8 text-xs">
-                      <Link to="/campaigns/new" search={{ clone: campaign.id }}>
-                        <Copy className="size-3.5 mr-1" /> Duplicate
-                      </Link>
-                    </Button>
+                    <div className="flex justify-end items-center gap-1">
+                      <SendTestEmailDialog campaignId={campaign.id} campaignSubject={campaign.subject} />
+                      <Button asChild size="sm" variant="ghost" className="h-8 text-xs">
+                        <Link to="/campaigns/new" search={{ clone: campaign.id }}>
+                          <Copy className="size-3.5 mr-1" /> Duplicate
+                        </Link>
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               );

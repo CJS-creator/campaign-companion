@@ -87,10 +87,19 @@ export async function runQueueWorker(targetCampaignId?: string, origin?: string)
       .eq("id", cid)
       .maybeSingle();
 
-    if (!campaign || campaign.status === "completed" || campaign.status === "sent") continue;
+    if (!campaign || campaign.status === "completed" || campaign.status === "sent" || campaign.status === "cancelled" || campaign.status === "draft") continue;
 
     // Mark campaign as sending
     await supabaseAdmin.from("campaigns").update({ status: "sending" }).eq("id", cid);
+
+    // Auto-repair: reset any sends stuck in 'sending' status for >15s back to 'queued'
+    const fifteenSecsAgo = new Date(Date.now() - 15_000).toISOString();
+    await supabaseAdmin
+      .from("sends")
+      .update({ status: "queued" })
+      .eq("campaign_id", cid)
+      .eq("status", "sending")
+      .or(`last_attempt_at.is.null,last_attempt_at.lt.${fifteenSecsAgo}`);
 
     // Try PL/pgSQL atomic claim function first, fallback to standard query
     let sends: Array<{ id: string; lead_id: string; attempt_count: number; status: string }> = [];
@@ -109,6 +118,32 @@ export async function runQueueWorker(targetCampaignId?: string, origin?: string)
         .in("status", ["queued", "failed"])
         .lt("attempt_count", MAX_ATTEMPTS);
       sends = directSends ?? [];
+    }
+
+    // Fallback: If still no sends claimed, check if sends were stuck in 'sending' and force claim them
+    if (!sends || sends.length === 0) {
+      const { data: stuckSends } = await supabaseAdmin
+        .from("sends")
+        .select("id, lead_id, attempt_count, status")
+        .eq("campaign_id", cid)
+        .eq("status", "sending")
+        .lt("attempt_count", MAX_ATTEMPTS);
+
+      if (stuckSends && stuckSends.length > 0) {
+        await supabaseAdmin
+          .from("sends")
+          .update({ status: "queued" })
+          .eq("campaign_id", cid)
+          .eq("status", "sending");
+
+        const { data: reclaimed } = await supabaseAdmin
+          .from("sends")
+          .select("id, lead_id, attempt_count, status")
+          .eq("campaign_id", cid)
+          .eq("status", "queued")
+          .lt("attempt_count", MAX_ATTEMPTS);
+        sends = reclaimed ?? [];
+      }
     }
 
     if (!sends || sends.length === 0) {
@@ -341,16 +376,24 @@ export const sendCampaign = createServerFn({ method: "POST" })
       }
       if (requireLinkCheck) {
         try {
-          const probe = await fetch(candidate, { method: "GET", redirect: "follow" });
+          const probe = await fetch(candidate, {
+            method: "GET",
+            redirect: "follow",
+            signal: AbortSignal.timeout(2500),
+          });
           if (probe.status >= 400) {
             throw new Error(`Link check failed (${candidate}): HTTP ${probe.status}`);
           }
         } catch (error) {
-          throw new Error(
-            error instanceof Error && error.message.startsWith("Link check failed")
-              ? error.message
-              : `Link check failed (${candidate}): the URL could not be reached.`,
-          );
+          if (error instanceof Error && error.name === "TimeoutError") {
+            console.warn(`Link check probe timed out for ${candidate}, allowing queueing.`);
+          } else {
+            throw new Error(
+              error instanceof Error && error.message.startsWith("Link check failed")
+                ? error.message
+                : `Link check failed (${candidate}): the URL could not be reached.`,
+            );
+          }
         }
       }
     }
@@ -446,6 +489,21 @@ export const scheduleCampaign = createServerFn({ method: "POST" })
       })
       .eq("id", data.campaignId);
 
+    // Populate queued send records so when scheduled_for arrives, worker delivers them
+    if (leads && leads.length > 0) {
+      await supabaseAdmin.from("sends").delete().eq("campaign_id", data.campaignId).eq("status", "queued");
+      await supabaseAdmin
+        .from("sends")
+        .insert(
+          leads.map((lead) => ({
+            campaign_id: data.campaignId,
+            lead_id: lead.id,
+            status: "queued",
+            attempt_count: 0,
+          })),
+        );
+    }
+
     // Audit log schedule
     await supabaseAdmin.from("audit_logs").insert({
       action: "campaign_scheduled",
@@ -453,6 +511,204 @@ export const scheduleCampaign = createServerFn({ method: "POST" })
     });
 
     return { scheduled: true, scheduledFor: data.scheduledFor };
+  });
+
+export const cancelScheduledCampaign = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => sendInput.parse(data))
+  .handler(async ({ data }) => {
+    const { assertOwner } = await import("./owner-guard.server");
+    assertOwner();
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    await supabaseAdmin
+      .from("campaigns")
+      .update({ status: "draft", scheduled_for: null })
+      .eq("id", data.campaignId);
+
+    await supabaseAdmin
+      .from("sends")
+      .delete()
+      .eq("campaign_id", data.campaignId)
+      .eq("status", "queued");
+
+    await supabaseAdmin.from("audit_logs").insert({
+      action: "campaign_schedule_cancelled",
+      details: { campaignId: data.campaignId },
+    });
+
+    return { success: true };
+  });
+
+export const sendScheduledNow = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => sendInput.parse(data))
+  .handler(async ({ data }) => {
+    const { assertOwner } = await import("./owner-guard.server");
+    assertOwner();
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const origin = new URL(getRequestUrl()).origin;
+
+    await supabaseAdmin
+      .from("campaigns")
+      .update({ status: "queued", scheduled_for: null })
+      .eq("id", data.campaignId);
+
+    runQueueWorker(data.campaignId, origin).catch((err) => {
+      console.error("Send scheduled now background failure:", err);
+    });
+
+    return { success: true };
+  });
+
+const sendTestEmailInput = z.object({
+  campaignId: z.string().uuid(),
+  testEmail: z.string().trim().email(),
+});
+
+export const sendTestEmail = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => sendTestEmailInput.parse(data))
+  .handler(async ({ data }) => {
+    const { assertOwner } = await import("./owner-guard.server");
+    assertOwner();
+
+    const apiKey = process.env["RESEND_API_KEY"];
+    if (!apiKey) throw new Error("RESEND_API_KEY is not configured.");
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { signSendToken } = await import("./link-safety");
+    const origin = new URL(getRequestUrl()).origin;
+
+    const { data: campaign } = await supabaseAdmin
+      .from("campaigns")
+      .select("*")
+      .eq("id", data.campaignId)
+      .maybeSingle();
+
+    if (!campaign) throw new Error("Campaign not found.");
+
+    const { data: settings } = await supabaseAdmin
+      .from("settings")
+      .select("*")
+      .eq("id", "default")
+      .maybeSingle();
+
+    const businessName = settings?.business_name || "Campaign Companion";
+    const postalAddress = settings?.postal_address || "123 Business Street, Mumbai, MH 400001, India";
+    const supportEmail = settings?.support_email || "support@example.com";
+    const fromAddress = settings?.from_address || FROM_ADDRESS;
+
+    let leadId: string;
+    const { data: existingLead } = await supabaseAdmin
+      .from("leads")
+      .select("id")
+      .eq("email", data.testEmail.toLowerCase())
+      .maybeSingle();
+
+    if (existingLead) {
+      leadId = existingLead.id;
+    } else {
+      const { data: newLead, error: leadErr } = await supabaseAdmin
+        .from("leads")
+        .insert({
+          email: data.testEmail.toLowerCase(),
+          name: "Test Recipient",
+          consent_source: "test_send",
+          consent_date: new Date().toISOString(),
+          consent_note: "Created for test email verification",
+          subscribed: true,
+        })
+        .select("id")
+        .single();
+      if (leadErr) throw new Error(leadErr.message);
+      leadId = newLead.id;
+    }
+
+    const { data: sendRecord, error: sendErr } = await supabaseAdmin
+      .from("sends")
+      .insert({
+        campaign_id: campaign.id,
+        lead_id: leadId,
+        status: "sending",
+        attempt_count: 1,
+        last_attempt_at: new Date().toISOString(),
+      })
+      .select("id")
+      .single();
+
+    if (sendErr) throw new Error(sendErr.message);
+    const sendId = sendRecord.id;
+
+    const sig = signSendToken(sendId);
+    const clickUrl = `${origin}/track/click?send_id=${sendId}&sig=${sig}`;
+    const pixelUrl = `${origin}/track/open?send_id=${sendId}&sig=${sig}`;
+    const unsubUrl = `${origin}/track/unsubscribe?send_id=${sendId}&sig=${sig}`;
+
+    let html = campaign.body_html || "";
+    html = html.replaceAll("{{offer_link}}", clickUrl);
+    html = html.replaceAll("{{name}}", "Test Recipient");
+    if (campaign.offer_url) {
+      html = html.replaceAll(campaign.offer_url, clickUrl);
+    }
+
+    html += `<div style="margin-top:32px;padding-top:16px;border-top:1px solid #e5e7eb;font-size:12px;color:#6b7280;text-align:center;line-height:1.5;">
+      <p style="background:#fef3c7;color:#92400e;padding:4px 8px;border-radius:4px;display:inline-block;font-weight:600;margin-bottom:8px;">TEST EMAIL DELIVERABILITY PROBE</p>
+      <p>Sent by <strong>${businessName}</strong> · ${postalAddress}</p>
+      <p>Questions? Contact <a href="mailto:${supportEmail}" style="color:#6b7280;">${supportEmail}</a> · <a href="${unsubUrl}" style="color:#6b7280;text-decoration:underline;">Unsubscribe</a></p>
+    </div>`;
+    html += `<img src="${pixelUrl}" width="1" height="1" alt="" style="display:block;border:0;" />`;
+
+    const plainText = campaign.body_text || html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        from: fromAddress,
+        to: [data.testEmail],
+        subject: `[TEST] ${campaign.subject}`,
+        html,
+        text: plainText,
+        headers: {
+          "List-Unsubscribe": `<${unsubUrl}>`,
+          "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        },
+      }),
+    });
+
+    if (!res.ok) {
+      const body = (await res.text()).replaceAll(/\s+/g, " ").slice(0, 300);
+      const failureReason = `Resend returned ${res.status}${body ? `: ${body}` : ""}`;
+      await supabaseAdmin
+        .from("sends")
+        .update({ status: "failed", failure_reason: failureReason })
+        .eq("id", sendId);
+      throw new Error(failureReason);
+    }
+
+    const resData = await res.json().catch(() => ({}));
+    await supabaseAdmin
+      .from("sends")
+      .update({
+        status: "sent",
+        sent_at: new Date().toISOString(),
+        provider_message_id: resData.id || null,
+      })
+      .eq("id", sendId);
+
+    await supabaseAdmin.from("audit_logs").insert({
+      action: "test_email_sent",
+      details: { campaignId: campaign.id, testEmail: data.testEmail, sendId },
+    });
+
+    return {
+      success: true,
+      sendId,
+      recipientEmail: data.testEmail,
+      pixelUrl,
+      clickUrl,
+    };
   });
 
 export const retryFailedSends = createServerFn({ method: "POST" })
@@ -529,4 +785,157 @@ export const retrySingleSend = createServerFn({ method: "POST" })
 
     return { success: true };
   });
+
+export const checkAndRepairQueue = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => z.object({ campaignId: z.string().uuid().optional() }).parse(data ?? {}))
+  .handler(async ({ data }) => {
+    const { assertOwner } = await import("./owner-guard.server");
+    assertOwner();
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const origin = new URL(getRequestUrl()).origin;
+
+    const apiKeyConfigured = Boolean(process.env["RESEND_API_KEY"]);
+
+    // 1. Reset any stuck sends in 'sending' status older than 5 seconds
+    const cutoff = new Date(Date.now() - 5_000).toISOString();
+    let resetQuery = supabaseAdmin
+      .from("sends")
+      .update({ status: "queued" })
+      .eq("status", "sending")
+      .or(`last_attempt_at.is.null,last_attempt_at.lt.${cutoff}`);
+
+    if (data.campaignId) resetQuery = resetQuery.eq("campaign_id", data.campaignId);
+
+    const { count: resetCount } = await resetQuery.select("id", { count: "exact", head: true });
+
+    // 2. Trigger worker
+    if (apiKeyConfigured) {
+      await runQueueWorker(data.campaignId, origin);
+    }
+
+    // 3. Gather queue status metrics
+    let sendsQuery = supabaseAdmin.from("sends").select("status");
+    if (data.campaignId) sendsQuery = sendsQuery.eq("campaign_id", data.campaignId);
+
+    const { data: sends } = await sendsQuery;
+
+    const queuedCount = (sends ?? []).filter((s) => s.status === "queued").length;
+    const sendingCount = (sends ?? []).filter((s) => s.status === "sending").length;
+    const sentCount = (sends ?? []).filter((s) => s.status === "sent").length;
+    const failedCount = (sends ?? []).filter((s) => s.status === "failed").length;
+
+    return {
+      success: true,
+      apiKeyConfigured,
+      resetStuckCount: resetCount ?? 0,
+      queuedCount,
+      sendingCount,
+      sentCount,
+      failedCount,
+      message: !apiKeyConfigured
+        ? "Warning: RESEND_API_KEY is not configured in environment variables."
+        : resetCount && resetCount > 0
+          ? `Reset ${resetCount} stuck send(s) back to queued status and restarted delivery worker.`
+          : "Queue check complete. Background worker triggered.",
+    };
+  });
+
+export const stopCampaignSending = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => sendInput.parse(data))
+  .handler(async ({ data }) => {
+    const { assertOwner } = await import("./owner-guard.server");
+    assertOwner();
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    // Mark campaign as cancelled
+    await supabaseAdmin
+      .from("campaigns")
+      .update({ status: "cancelled" })
+      .eq("id", data.campaignId);
+
+    // Mark any unsent sends as skipped
+    const { count } = await supabaseAdmin
+      .from("sends")
+      .update({
+        status: "skipped",
+        failure_reason: "Sending manually stopped by owner",
+      })
+      .eq("campaign_id", data.campaignId)
+      .in("status", ["queued", "sending"]);
+
+    await supabaseAdmin.from("audit_logs").insert({
+      action: "campaign_sending_stopped",
+      details: { campaignId: data.campaignId, skippedSendsCount: count ?? 0 },
+    });
+
+    return { success: true, skippedCount: count ?? 0 };
+  });
+
+export const resumeCampaignSending = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => sendInput.parse(data))
+  .handler(async ({ data }) => {
+    const { assertOwner } = await import("./owner-guard.server");
+    assertOwner();
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const origin = new URL(getRequestUrl()).origin;
+
+    // Reset skipped/failed sends back to queued
+    await supabaseAdmin
+      .from("sends")
+      .update({ status: "queued", failure_reason: null, attempt_count: 0 })
+      .eq("campaign_id", data.campaignId)
+      .in("status", ["skipped", "failed"]);
+
+    // Mark campaign as queued
+    await supabaseAdmin
+      .from("campaigns")
+      .update({ status: "queued" })
+      .eq("id", data.campaignId);
+
+    await supabaseAdmin.from("audit_logs").insert({
+      action: "campaign_sending_resumed",
+      details: { campaignId: data.campaignId },
+    });
+
+    runQueueWorker(data.campaignId, origin).catch((err) => {
+      console.error("Resume campaign background worker error:", err);
+    });
+
+    return { success: true };
+  });
+
+export const rescheduleCampaign = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => scheduleInput.parse(data))
+  .handler(async ({ data }) => {
+    const { assertOwner } = await import("./owner-guard.server");
+    assertOwner();
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const newDate = new Date(data.scheduledFor);
+    if (isNaN(newDate.getTime()) || newDate.getTime() <= Date.now()) {
+      throw new Error("Rescheduled date must be a valid future time.");
+    }
+
+    const { error } = await supabaseAdmin
+      .from("campaigns")
+      .update({
+        status: "scheduled",
+        scheduled_for: newDate.toISOString(),
+      })
+      .eq("id", data.campaignId);
+
+    if (error) throw new Error(error.message);
+
+    await supabaseAdmin.from("audit_logs").insert({
+      action: "campaign_rescheduled",
+      details: { campaignId: data.campaignId, newScheduledFor: newDate.toISOString() },
+    });
+
+    return { success: true, scheduledFor: newDate.toISOString() };
+  });
+
+
+
+
 

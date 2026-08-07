@@ -10,6 +10,8 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AnalyticsRouteImport } from './routes/analytics'
+import { Route as DiagnosticsRouteImport } from './routes/diagnostics'
 import { Route as EventsRouteImport } from './routes/events'
 import { Route as LeadsRouteImport } from './routes/leads'
 import { Route as LoginRouteImport } from './routes/login'
@@ -25,6 +27,16 @@ import { Route as ApiPublicWebhooksResendRouteImport } from './routes/api/public
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AnalyticsRoute = AnalyticsRouteImport.update({
+  id: '/analytics',
+  path: '/analytics',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DiagnosticsRoute = DiagnosticsRouteImport.update({
+  id: '/diagnostics',
+  path: '/diagnostics',
   getParentRoute: () => rootRouteImport,
 } as any)
 const EventsRoute = EventsRouteImport.update({
@@ -86,6 +98,8 @@ const ApiPublicWebhooksResendRoute = ApiPublicWebhooksResendRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/analytics': typeof AnalyticsRoute
+  '/diagnostics': typeof DiagnosticsRoute
   '/events': typeof EventsRoute
   '/leads': typeof LeadsRoute
   '/login': typeof LoginRoute
@@ -100,6 +114,8 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/analytics': typeof AnalyticsRoute
+  '/diagnostics': typeof DiagnosticsRoute
   '/events': typeof EventsRoute
   '/leads': typeof LeadsRoute
   '/login': typeof LoginRoute
@@ -115,6 +131,8 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/analytics': typeof AnalyticsRoute
+  '/diagnostics': typeof DiagnosticsRoute
   '/events': typeof EventsRoute
   '/leads': typeof LeadsRoute
   '/login': typeof LoginRoute
@@ -131,6 +149,8 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/analytics'
+    | '/diagnostics'
     | '/events'
     | '/leads'
     | '/login'
@@ -145,6 +165,8 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/analytics'
+    | '/diagnostics'
     | '/events'
     | '/leads'
     | '/login'
@@ -159,6 +181,8 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/analytics'
+    | '/diagnostics'
     | '/events'
     | '/leads'
     | '/login'
@@ -174,6 +198,8 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AnalyticsRoute: typeof AnalyticsRoute
+  DiagnosticsRoute: typeof DiagnosticsRoute
   EventsRoute: typeof EventsRoute
   LeadsRoute: typeof LeadsRoute
   LoginRoute: typeof LoginRoute
@@ -194,6 +220,20 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/analytics': {
+      id: '/analytics'
+      path: '/analytics'
+      fullPath: '/analytics'
+      preLoaderRoute: typeof AnalyticsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/diagnostics': {
+      id: '/diagnostics'
+      path: '/diagnostics'
+      fullPath: '/diagnostics'
+      preLoaderRoute: typeof DiagnosticsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/events': {
@@ -278,6 +318,8 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AnalyticsRoute: AnalyticsRoute,
+  DiagnosticsRoute: DiagnosticsRoute,
   EventsRoute: EventsRoute,
   LeadsRoute: LeadsRoute,
   LoginRoute: LoginRoute,

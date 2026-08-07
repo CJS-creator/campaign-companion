@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import {
   Outlet,
   Link,
@@ -131,9 +131,11 @@ function RootShell({ children }: { children: ReactNode }) {
 
 const navItems = [
   { to: "/", label: "Dashboard" },
+  { to: "/analytics", label: "Analytics" },
   { to: "/leads", label: "Leads" },
   { to: "/campaigns/new", label: "Compose" },
   { to: "/events", label: "Events" },
+  { to: "/diagnostics", label: "Diagnostics" },
   { to: "/settings", label: "Settings" },
 ] as const;
 
@@ -141,6 +143,17 @@ function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   const router = useRouter();
   const navigate = useNavigate();
+
+  // Periodic background health check & queue worker tick (auto-sends scheduled campaigns when due)
+  useQuery({
+    queryKey: ["backgroundHealthCheck"],
+    queryFn: async () => {
+      const { runHealthCheck } = await import("../lib/diagnostics.functions");
+      return runHealthCheck();
+    },
+    refetchInterval: 30000,
+    refetchOnWindowFocus: true,
+  });
 
   const signOut = async () => {
     const { logoutServerFn } = await import("./login");

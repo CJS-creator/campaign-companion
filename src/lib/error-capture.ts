@@ -1,11 +1,49 @@
 // Captures the original Error out-of-band so server.ts can recover the stack
 // when h3 has already swallowed the throw into a generic 500 Response.
 
+export type CapturedError = {
+  id: string;
+  timestamp: string;
+  message: string;
+  stack?: string;
+  source: "client_window" | "unhandled_rejection" | "react_boundary" | "server_error" | "console";
+  path?: string;
+};
+
+const MAX_ERROR_LOGS = 100;
+const errorLogs: CapturedError[] = [];
+
+export function addCapturedErrorRecord(err: Partial<CapturedError> & { message: string }) {
+  const record: CapturedError = {
+    id: `err_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    timestamp: new Date().toISOString(),
+    message: err.message,
+    stack: err.stack,
+    source: err.source || "client_window",
+    path: err.path || (typeof window !== "undefined" ? window.location.pathname : undefined),
+  };
+  errorLogs.unshift(record);
+  if (errorLogs.length > MAX_ERROR_LOGS) {
+    errorLogs.pop();
+  }
+}
+
+export function getCapturedErrorRecords(): CapturedError[] {
+  return [...errorLogs];
+}
+
+export function clearCapturedErrorRecords(): void {
+  errorLogs.length = 0;
+}
+
 let lastCapturedError: { error: unknown; at: number } | undefined;
 const TTL_MS = 5_000;
 
-function record(error: unknown) {
+function record(error: unknown, source: CapturedError["source"] = "console") {
   lastCapturedError = { error, at: Date.now() };
+  const message = error instanceof Error ? error.message : typeof error === "string" ? error : safeStringify(error);
+  const stack = error instanceof Error ? error.stack : undefined;
+  addCapturedErrorRecord({ message, stack, source });
 }
 
 // h3's HTTPError serializes to {"status":500,"unhandled":true,"message":"HTTPError"} —
@@ -56,16 +94,16 @@ const originalConsoleError = console.error.bind(console);
 console.error = (...args: unknown[]) => {
   const expanded = args.map((arg) => {
     if (!isErrorLike(arg)) return arg;
-    record(arg);
+    record(arg, "console");
     return describeError(arg);
   });
   originalConsoleError(...expanded);
 };
 
 if (typeof globalThis.addEventListener === "function") {
-  globalThis.addEventListener("error", (event) => record((event as ErrorEvent).error ?? event));
+  globalThis.addEventListener("error", (event) => record((event as ErrorEvent).error ?? event, "client_window"));
   globalThis.addEventListener("unhandledrejection", (event) =>
-    record((event as PromiseRejectionEvent).reason),
+    record((event as PromiseRejectionEvent).reason, "unhandled_rejection"),
   );
 }
 
@@ -79,3 +117,4 @@ export function consumeLastCapturedError(): unknown {
   lastCapturedError = undefined;
   return error;
 }
+

@@ -122,6 +122,102 @@ export const deleteLeads = createServerFn({ method: "POST" })
     return { ok: true, count: data.ids.length };
   });
 
+export type LeadImportPreviewResult = {
+  totalRows: number;
+  newLeads: Array<{ email: string; name: string | null }>;
+  dbDuplicates: Array<{ email: string; name: string | null; existingName?: string | null }>;
+  fileDuplicates: Array<{ email: string; name: string | null; firstRow: number }>;
+  invalidRows: Array<{ row: number; email: string; reason: string }>;
+};
+
+export const previewLeadImport = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) =>
+    z
+      .object({
+        rows: z
+          .array(z.object({ email: z.string(), name: z.string().nullable().optional() }))
+          .min(1)
+          .max(20000),
+      })
+      .parse(data),
+  )
+  .handler(async ({ data }): Promise<LeadImportPreviewResult> => {
+    const db = await guard();
+    const emailSchema = z.string().trim().email().max(255);
+
+    const validRows: Array<{ rowNum: number; email: string; name: string | null }> = [];
+    const invalidRows: LeadImportPreviewResult["invalidRows"] = [];
+    const seenEmails = new Map<string, number>();
+    const fileDuplicates: LeadImportPreviewResult["fileDuplicates"] = [];
+
+    data.rows.forEach((r, idx) => {
+      const rowNum = idx + 2;
+      const cleanEmail = (r.email || "").trim().toLowerCase();
+      const cleanName = r.name ? r.name.trim().slice(0, 100) : null;
+
+      if (!cleanEmail) {
+        invalidRows.push({ row: rowNum, email: r.email || "", reason: "Missing email address" });
+        return;
+      }
+
+      const parsed = emailSchema.safeParse(cleanEmail);
+      if (!parsed.success) {
+        invalidRows.push({ row: rowNum, email: cleanEmail, reason: "Invalid email format" });
+        return;
+      }
+
+      if (seenEmails.has(cleanEmail)) {
+        fileDuplicates.push({
+          email: cleanEmail,
+          name: cleanName,
+          firstRow: seenEmails.get(cleanEmail)!,
+        });
+        return;
+      }
+
+      seenEmails.set(cleanEmail, rowNum);
+      validRows.push({ rowNum, email: cleanEmail, name: cleanName });
+    });
+
+    const emailsToCheck = validRows.map((r) => r.email);
+    const existingMap = new Map<string, { name: string | null }>();
+
+    for (let i = 0; i < emailsToCheck.length; i += 500) {
+      const chunk = emailsToCheck.slice(i, i + 500);
+      const { data: existing, error } = await db
+        .from("leads")
+        .select("email, name")
+        .in("email", chunk);
+      if (error) throw new Error(error.message);
+      for (const item of existing ?? []) {
+        existingMap.set(item.email.toLowerCase(), { name: item.name });
+      }
+    }
+
+    const newLeads: LeadImportPreviewResult["newLeads"] = [];
+    const dbDuplicates: LeadImportPreviewResult["dbDuplicates"] = [];
+
+    validRows.forEach((r) => {
+      if (existingMap.has(r.email)) {
+        dbDuplicates.push({
+          email: r.email,
+          name: r.name,
+          existingName: existingMap.get(r.email)?.name,
+        });
+      } else {
+        newLeads.push({ email: r.email, name: r.name });
+      }
+    });
+
+    return {
+      totalRows: data.rows.length,
+      newLeads,
+      dbDuplicates,
+      fileDuplicates,
+      invalidRows,
+    };
+  });
+
 export const importLeads = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) =>
     z
