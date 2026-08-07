@@ -13,12 +13,14 @@ import { toast } from "sonner";
 export const loginServerFn = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => z.object({ password: z.string() }).parse(data))
   .handler(async ({ data }) => {
+    const crypto = await import("node:crypto");
     const { getOwnerPassword, createOwnerSessionCookie } = await import("@/lib/auth.server");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    const ownerPass = getOwnerPassword();
-    if (data.password !== ownerPass) {
-      throw new Error("Invalid owner password.");
+    const hash = (v: string) => crypto.createHash("sha256").update(v, "utf8").digest();
+    const ok = crypto.timingSafeEqual(hash(data.password), hash(getOwnerPassword()));
+    if (!ok) {
+      return { success: false as const, error: "Invalid owner password." };
     }
 
     // Set signed session cookie
@@ -31,8 +33,9 @@ export const loginServerFn = createServerFn({ method: "POST" })
       details: { timestamp: new Date().toISOString(), status: "success" },
     });
 
-    return { success: true };
+    return { success: true as const };
   });
+
 
 export const logoutServerFn = createServerFn({ method: "POST" }).handler(async () => {
   const { clearOwnerSessionCookie } = await import("@/lib/auth.server");
@@ -53,21 +56,30 @@ export const Route = createFileRoute("/login")({
 function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setError(null);
     try {
-      await loginServerFn({ data: { password } });
+      const res = await loginServerFn({ data: { password } });
+      if (!res.success) {
+        setError(res.error ?? "Invalid owner password.");
+        toast.error(res.error ?? "Invalid owner password.");
+        return;
+      }
       toast.success("Welcome back, Owner!");
       navigate({ to: "/" });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Login failed");
+    } catch {
+      setError("Login failed. Please try again.");
+      toast.error("Login failed. Please try again.");
     } finally {
       setLoading(false);
     }
   };
+
 
   return (
     <div className="flex min-h-[70vh] items-center justify-center px-4">
@@ -95,6 +107,14 @@ function LoginPage() {
               autoFocus
             />
           </div>
+
+          {error && (
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          )}
+
+
 
           <Button type="submit" className="w-full" disabled={loading || !password}>
             {loading ? "Authenticating…" : (
