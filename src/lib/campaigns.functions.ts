@@ -186,7 +186,7 @@ export async function runQueueWorker(targetCampaignId?: string, origin?: string)
             Authorization: `Bearer ${apiKey}`,
           },
           body: JSON.stringify({
-            from: FROM_ADDRESS,
+            from: fromAddress,
             to: [lead.email],
             subject: campaign.subject,
             html,
