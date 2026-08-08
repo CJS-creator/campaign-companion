@@ -16,7 +16,7 @@ export const verifyLink = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => input.parse(data))
   .handler(async ({ data }): Promise<LinkCheckResult> => {
     const { assertOwner } = await import("./owner-guard.server");
-    assertOwner();
+    await assertOwner();
 
     const { url, issues } = inspectUrl(data.url);
     if (!url || hasBlockingIssue(issues)) {

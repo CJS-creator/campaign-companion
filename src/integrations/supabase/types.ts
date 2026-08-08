@@ -20,7 +20,7 @@ export type Database = {
           created_at: string
           details: Json
           id: string
-          user_id?: string | null
+          user_id: string | null
         }
         Insert: {
           action: string
@@ -52,7 +52,7 @@ export type Database = {
           sent_at: string | null
           status: string
           subject: string
-          user_id?: string | null
+          user_id: string | null
         }
         Insert: {
           approved_at?: string | null
@@ -96,7 +96,7 @@ export type Database = {
           metadata: Json
           reason: string | null
           send_id: string | null
-          user_id?: string | null
+          user_id: string | null
         }
         Insert: {
           campaign_id?: string | null
@@ -157,7 +157,7 @@ export type Database = {
           suppressed_at: string | null
           suppression_reason: string | null
           suppression_status: string
-          user_id?: string | null
+          user_id: string | null
         }
         Insert: {
           consent_date?: string
@@ -204,7 +204,7 @@ export type Database = {
           provider_message_id: string | null
           sent_at: string | null
           status: string
-          user_id?: string | null
+          user_id: string | null
         }
         Insert: {
           attempt_count?: number
@@ -273,7 +273,6 @@ export type Database = {
           throttle_pause_ms: number
           timezone: string
           updated_at: string
-          user_id?: string | null
         }
         Insert: {
           auto_suppress_bounces?: boolean
@@ -292,7 +291,6 @@ export type Database = {
           throttle_pause_ms?: number
           timezone?: string
           updated_at?: string
-          user_id?: string | null
         }
         Update: {
           auto_suppress_bounces?: boolean
@@ -311,7 +309,6 @@ export type Database = {
           throttle_pause_ms?: number
           timezone?: string
           updated_at?: string
-          user_id?: string | null
         }
         Relationships: []
       }
@@ -329,6 +326,7 @@ export type Database = {
           status: string
         }[]
       }
+      verify_worker_key: { Args: { p_key: string }; Returns: boolean }
     }
     Enums: {
       [_ in never]: never

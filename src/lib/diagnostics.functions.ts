@@ -52,7 +52,7 @@ export type DiagnosticsData = {
 export const runHealthCheck = createServerFn({ method: "POST" }).handler(
   async (): Promise<HealthCheckResult> => {
     const { assertOwner } = await import("./owner-guard.server");
-    assertOwner();
+    await assertOwner();
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { signSendToken } = await import("./link-safety");
@@ -192,7 +192,7 @@ export const runHealthCheck = createServerFn({ method: "POST" }).handler(
 export const fetchDiagnosticsData = createServerFn({ method: "GET" }).handler(
   async (): Promise<DiagnosticsData> => {
     const { assertOwner } = await import("./owner-guard.server");
-    assertOwner();
+    await assertOwner();
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
@@ -271,7 +271,7 @@ export const logClientErrorServerFn = createServerFn({ method: "POST" })
 export const clearDiagnosticsErrorsServerFn = createServerFn({ method: "POST" }).handler(
   async () => {
     const { assertOwner } = await import("./owner-guard.server");
-    assertOwner();
+    await assertOwner();
     clearCapturedErrorRecords();
     return { cleared: true };
   },

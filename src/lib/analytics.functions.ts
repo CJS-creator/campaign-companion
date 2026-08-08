@@ -51,7 +51,7 @@ export const fetchAnalyticsData = createServerFn({ method: "GET" })
   .inputValidator((data: unknown) => analyticsInputSchema.parse(data ?? {}))
   .handler(async ({ data }): Promise<AnalyticsSummaryData> => {
     const { assertOwner } = await import("./owner-guard.server");
-    assertOwner();
+    await assertOwner();
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
