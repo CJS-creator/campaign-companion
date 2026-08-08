@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   Outlet,
   Link,
@@ -6,7 +6,6 @@ import {
   redirect,
   useNavigate,
   useRouter,
-  useRouterState,
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
@@ -140,45 +139,22 @@ const navItems = [
   { to: "/settings", label: "Settings" },
 ] as const;
 
-// Periodic background health check & queue worker tick. Must live INSIDE the
-// QueryClientProvider — calling useQuery in RootComponent crashed SSR.
-function BackgroundHealthCheck() {
-  const location = useRouterState({ select: (s) => s.location.pathname });
-  const enabled = !location.startsWith("/login") && !location.startsWith("/track");
-
-  useQuery({
-    queryKey: ["backgroundHealthCheck"],
-    enabled,
-    retry: false,
-    queryFn: async () => {
-      try {
-        const { runHealthCheck } = await import("../lib/diagnostics.functions");
-        return await runHealthCheck();
-      } catch {
-        return null;
-      }
-    },
-    refetchInterval: 30000,
-    refetchOnWindowFocus: true,
-  });
-  return null;
-}
-
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   const router = useRouter();
   const navigate = useNavigate();
 
   const signOut = async () => {
+    await queryClient.cancelQueries();
+    queryClient.clear();
     const { logoutServerFn } = await import("./login");
     await logoutServerFn();
     await router.invalidate();
-    navigate({ to: "/login" });
+    navigate({ to: "/login", replace: true });
   };
 
   return (
     <QueryClientProvider client={queryClient}>
-      <BackgroundHealthCheck />
       <div className="min-h-screen bg-background">
         <header className="border-b border-border">
           <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-6 px-6 py-4">
