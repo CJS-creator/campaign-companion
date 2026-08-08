@@ -3,29 +3,36 @@ import { runQueueWorker } from "@/lib/campaigns.functions";
 
 /**
  * Queue drainer, called on a schedule (pg_cron) or manually.
- * Authenticated with the project's publishable/anon key in the `apikey` header.
+ * Authenticated with a private worker key: either the vault-stored key the
+ * scheduled job sends, or the WORKER_SECRET_KEY env secret. The public
+ * anon/publishable key is NOT accepted — it ships to every browser.
  */
 export const Route = createFileRoute("/api/public/cron/process-queue")({
   server: {
     handlers: {
       POST: async ({ request }) => {
         const provided =
+          request.headers.get("x-worker-key") ??
           request.headers.get("apikey") ??
           request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ??
           "";
 
-        const allowed = [
-          process.env["SUPABASE_PUBLISHABLE_KEY"],
-          process.env["SUPABASE_ANON_KEY"],
-          process.env["WORKER_SECRET_KEY"],
-        ].filter((k): k is string => Boolean(k));
+        const envKey = process.env["WORKER_SECRET_KEY"];
+        let authorized = Boolean(envKey && provided && provided === envKey);
 
-        if (allowed.length === 0 || !allowed.includes(provided)) {
+        if (!authorized && provided) {
+          const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+          const { data } = await supabaseAdmin.rpc("verify_worker_key", { p_key: provided });
+          authorized = data === true;
+        }
+
+        if (!authorized) {
           return new Response(JSON.stringify({ error: "Unauthorized" }), {
             status: 401,
             headers: { "Content-Type": "application/json" },
           });
         }
+
 
         const url = new URL(request.url);
         const campaignId = url.searchParams.get("campaign_id") || undefined;
