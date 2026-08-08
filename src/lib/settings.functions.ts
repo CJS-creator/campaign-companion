@@ -95,10 +95,12 @@ export const getSenderStatus = createServerFn({ method: "GET" }).handler(async (
   const validation = validateSenderAddress(fromAddress, data?.sender_domain);
 
   // Resolve the real reason: address missing/invalid vs. domain not verified at the provider.
+  const { lookupResendDomain } = await import("./resend-domains.server");
   let domainStatus: ResendDomainStatus | null = null;
   if (validation.isValid) {
     domainStatus = await lookupResendDomain(validation.domain);
   }
+
 
   const providerVerified = domainStatus ? domainStatus.status === "verified" : null;
   const verified = validation.isValid && providerVerified !== false;
