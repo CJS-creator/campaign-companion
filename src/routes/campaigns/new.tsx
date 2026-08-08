@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, useSearch, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { z } from "zod";
 import { ShieldCheck, ShieldAlert, Loader2, TriangleAlert, Tag, Clock, Calendar, Send } from "lucide-react";
 import { leadsQuery, campaignQuery } from "@/lib/data";
+import { isVerifiedSenderAddress } from "@/lib/sender";
 import { createCampaign } from "@/lib/app.functions";
 import { sendCampaign, scheduleCampaign } from "@/lib/campaigns.functions";
 import { getSettings } from "@/lib/settings.functions";
