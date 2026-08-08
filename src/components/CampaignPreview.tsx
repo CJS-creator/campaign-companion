@@ -54,7 +54,7 @@ export function CampaignPreview({ subject, offerUrl, bodyHtml }: CampaignPreview
       >
         <div className="bg-muted/40 border-b border-border px-4 py-3 text-xs space-y-1">
           <div className="flex justify-between text-muted-foreground">
-            <span><strong>From:</strong> onboarding@resend.dev</span>
+            <span><strong>From:</strong> your verified sender address</span>
             <span>Today</span>
           </div>
           <div className="text-muted-foreground">

@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
+import { isVerifiedSenderAddress } from "@/lib/sender";
 
 export const Route = createFileRoute("/settings")({
   head: () => ({
@@ -67,6 +68,8 @@ function SettingsPage() {
       });
     }
   }, [settings]);
+
+  const senderVerified = isVerifiedSenderAddress(form.from_address);
 
   const updateMutation = useMutation({
     mutationFn: updateSettings,
@@ -160,19 +163,23 @@ function SettingsPage() {
 
           <div className="space-y-1.5">
             <Label htmlFor="from_address" className="flex items-center gap-1.5">
-              <AtSign className="size-3.5 text-muted-foreground" /> From address (used by the sending worker)
+              <AtSign className="size-3.5 text-muted-foreground" /> Sender Address (verified “from” address)
             </Label>
             <Input
               id="from_address"
               value={form.from_address}
               onChange={(e) => setForm({ ...form, from_address: e.target.value })}
-              placeholder="Acme <hello@acme.in>"
-              required
+              placeholder="campaigns@yourdomain.com"
             />
             <p className="text-xs text-muted-foreground">
-              Until your own domain is verified, keep <code className="font-mono">onboarding@resend.dev</code> — it only
-              delivers to your own account address.
+              Must be an address on a domain you have verified with your email provider. Campaigns and test sends both go
+              out from this address; sending stays disabled until it is set.
             </p>
+            {!senderVerified && (
+              <p className="flex items-center gap-1.5 text-xs font-medium text-amber-600">
+                <ShieldAlert className="size-3.5" /> No verified sender address set — campaign sending is disabled.
+              </p>
+            )}
           </div>
         </Card>
 

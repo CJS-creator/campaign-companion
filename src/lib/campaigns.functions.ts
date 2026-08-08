@@ -2,8 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { getRequestUrl } from "@tanstack/react-start/server";
 import { z } from "zod";
 import { inspectUrl, hasBlockingIssue } from "./link-safety";
-
-export const FROM_ADDRESS = "onboarding@resend.dev";
+import { isVerifiedSenderAddress, SENDER_REQUIRED_MESSAGE } from "./sender";
 
 const sendInput = z.object({ campaignId: z.string().uuid() });
 const retrySendInput = z.object({ sendId: z.string().uuid() });
@@ -37,7 +36,11 @@ export async function runQueueWorker(targetCampaignId?: string, origin?: string)
   const businessName = settings?.business_name || "Campaign Companion";
   const postalAddress = settings?.postal_address || "123 Business Street, Mumbai, MH 400001, India";
   const supportEmail = settings?.support_email || "support@example.com";
-  const fromAddress = settings?.from_address || FROM_ADDRESS;
+  const fromAddress = (settings?.from_address ?? "").trim();
+  if (!isVerifiedSenderAddress(fromAddress)) {
+    console.error("Worker error: " + SENDER_REQUIRED_MESSAGE);
+    return;
+  }
 
   // Sending caps (deliverability / reputation safeguard)
   const enforceCaps = settings?.enforce_caps ?? true;
@@ -351,9 +354,12 @@ export const sendCampaign = createServerFn({ method: "POST" })
 
     const { data: sendSettings } = await supabaseAdmin
       .from("settings")
-      .select("require_link_check, block_url_shorteners")
+      .select("require_link_check, block_url_shorteners, from_address")
       .eq("id", "default")
       .maybeSingle();
+    if (!isVerifiedSenderAddress((sendSettings?.from_address ?? "").trim())) {
+      throw new Error(SENDER_REQUIRED_MESSAGE);
+    }
     const requireLinkCheck = sendSettings?.require_link_check ?? true;
     const blockShorteners = sendSettings?.block_url_shorteners ?? true;
 
@@ -461,6 +467,15 @@ export const scheduleCampaign = createServerFn({ method: "POST" })
     assertOwner();
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const { data: schedSettings } = await supabaseAdmin
+      .from("settings")
+      .select("from_address")
+      .eq("id", "default")
+      .maybeSingle();
+    if (!isVerifiedSenderAddress((schedSettings?.from_address ?? "").trim())) {
+      throw new Error(SENDER_REQUIRED_MESSAGE);
+    }
 
     const { data: campaign } = await supabaseAdmin
       .from("campaigns")
@@ -594,7 +609,8 @@ export const sendTestEmail = createServerFn({ method: "POST" })
     const businessName = settings?.business_name || "Campaign Companion";
     const postalAddress = settings?.postal_address || "123 Business Street, Mumbai, MH 400001, India";
     const supportEmail = settings?.support_email || "support@example.com";
-    const fromAddress = settings?.from_address || FROM_ADDRESS;
+    const fromAddress = (settings?.from_address ?? "").trim();
+    if (!isVerifiedSenderAddress(fromAddress)) throw new Error(SENDER_REQUIRED_MESSAGE);
 
     let leadId: string;
     const { data: existingLead } = await supabaseAdmin

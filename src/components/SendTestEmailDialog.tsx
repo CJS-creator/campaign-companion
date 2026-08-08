@@ -24,9 +24,10 @@ type SendTestEmailDialogProps = {
   campaignId: string;
   campaignSubject: string;
   trigger?: React.ReactNode;
+  senderVerified?: boolean;
 };
 
-export function SendTestEmailDialog({ campaignId, campaignSubject, trigger }: SendTestEmailDialogProps) {
+export function SendTestEmailDialog({ campaignId, campaignSubject, trigger, senderVerified = true }: SendTestEmailDialogProps) {
   const [open, setOpen] = useState(false);
   const [testEmail, setTestEmail] = useState("");
   const [activeSendId, setActiveSendId] = useState<string | null>(null);
@@ -106,13 +107,19 @@ export function SendTestEmailDialog({ campaignId, campaignSubject, trigger }: Se
               onChange={(e) => setTestEmail(e.target.value)}
             />
             <p className="text-xs text-muted-foreground">
-              We'll send a live test message with embedded tracking pixel and link wrappers.
+              We'll send a live test message from your verified sender address, with embedded tracking pixel and link
+              wrappers.
             </p>
+            {!senderVerified && (
+              <p className="text-xs font-medium text-amber-600">
+                Set a verified sender address in Settings before sending test emails.
+              </p>
+            )}
           </div>
 
           <Button
             className="w-full"
-            disabled={testMutation.isPending}
+            disabled={testMutation.isPending || !senderVerified}
             onClick={() => testMutation.mutate()}
           >
             {testMutation.isPending ? (
