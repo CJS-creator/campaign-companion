@@ -6,7 +6,6 @@ import {
   redirect,
   useNavigate,
   useRouter,
-  useRouterState,
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
