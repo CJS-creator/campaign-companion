@@ -8,16 +8,20 @@ import {
   ShieldCheck,
   ShieldAlert,
   Loader2,
-  TriangleAlert,
   Tag,
   Clock,
   Calendar,
   Send,
   Eye,
   Edit3,
-  Columns,
   Sparkles,
   FileText,
+  CheckCircle2,
+  ArrowRight,
+  ArrowLeft,
+  Users,
+  Link2,
+  Layers,
 } from "lucide-react";
 import { leadsQuery, campaignQuery } from "@/lib/data";
 import { isVerifiedSenderAddress } from "@/lib/sender";
@@ -31,20 +35,21 @@ import { PreSendChecklist } from "@/components/PreSendChecklist";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card } from "@/components/ui/card";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { PageHeader, StatusBadge } from "@/components/patterns";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/campaigns/new")({
   validateSearch: (search: Record<string, unknown>): { clone?: string } =>
     typeof search["clone"] === "string" ? { clone: search["clone"] } : {},
   head: () => ({
     meta: [
-      { title: "New Campaign — Postmark Studio" },
+      { title: "New Campaign Wizard — Postmark Studio" },
       {
         name: "description",
         content: "Compose a subject line and rich text email with a tracked offer link.",
@@ -81,7 +86,7 @@ const EMAIL_TEMPLATES = [
   },
 ];
 
-type ViewMode = "split" | "editor" | "preview";
+type Step = 1 | 2 | 3 | 4;
 
 function ComposerPage() {
   const navigate = useNavigate();
@@ -98,14 +103,16 @@ function ComposerPage() {
   const senderVerified = isVerifiedSenderAddress(settings?.from_address ?? "");
 
   const { data: leads = [] } = useQuery(leadsQuery);
-  const recipients = leads.filter((l) => l.subscribed).length;
+  const subscribedLeads = leads.filter((l) => l.subscribed);
+  const recipients = subscribedLeads.length;
 
+  const [currentStep, setCurrentStep] = useState<Step>(1);
   const [subject, setSubject] = useState("");
   const [offerUrl, setOfferUrl] = useState("");
   const [bodyHtml, setBodyHtml] = useState("");
   const [scheduledFor, setScheduledFor] = useState("");
   const [isScheduling, setIsScheduling] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>("split");
+  const [showPreviewDrawer, setShowPreviewDrawer] = useState(false);
 
   const cloneId = searchParams.clone;
   const { data: cloneSource } = useQuery({
@@ -193,256 +200,426 @@ function ComposerPage() {
 
   const senderConfigured = Boolean(settings?.business_name && settings?.postal_address);
 
+  const steps = [
+    { number: 1, title: "Content", icon: Edit3, description: "Subject & Email Body" },
+    { number: 2, title: "Links", icon: Link2, description: "Tracked Offer URL" },
+    { number: 3, title: "Recipients", icon: Users, description: "Audience Selection" },
+    { number: 4, title: "Review", icon: Layers, description: "Checklist & Launch" },
+  ];
+
   return (
     <div className="space-y-6">
-      <header className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight font-heading">
-            Campaign Composer
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Targeting {recipients} subscribed {recipients === 1 ? "lead" : "leads"}.
-          </p>
-        </div>
+      <PageHeader
+        title="Campaign Composer"
+        description={`Targeting ${recipients} subscribed ${recipients === 1 ? "lead" : "leads"}.`}
+        backLink={{ to: "/", label: "Back to Dashboard" }}
+        actions={
+          <div className="flex items-center gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9 text-xs" aria-label="Load starter template">
+                  <Sparkles className="size-3.5 mr-1.5 text-amber-500" /> Starter Templates
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56 bg-card border-border">
+                {EMAIL_TEMPLATES.map((tpl) => (
+                  <DropdownMenuItem
+                    key={tpl.name}
+                    onClick={() => applyTemplate(tpl)}
+                    className="flex items-center gap-2 text-xs font-semibold cursor-pointer py-2"
+                  >
+                    <FileText className="size-3.5 text-primary" />
+                    {tpl.name}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
 
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Starter Templates Dropdown */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="h-9 text-xs">
-                <Sparkles className="size-3.5 mr-1.5 text-amber-500" /> Load Template
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56 bg-card border-border">
-              {EMAIL_TEMPLATES.map((tpl) => (
-                <DropdownMenuItem
-                  key={tpl.name}
-                  onClick={() => applyTemplate(tpl)}
-                  className="flex items-center gap-2 text-xs font-semibold cursor-pointer py-2"
-                >
-                  <FileText className="size-3.5 text-primary" />
-                  {tpl.name}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          {/* View Mode Controls */}
-          <div className="flex items-center gap-1 rounded-lg border border-border bg-muted/40 p-1 text-xs">
             <Button
-              type="button"
-              variant={viewMode === "split" ? "default" : "ghost"}
+              variant="outline"
               size="sm"
-              className="h-7 px-2.5 text-xs font-semibold"
-              onClick={() => setViewMode("split")}
-              title="Split Editor & Live Preview Side-by-Side"
+              className="h-9 text-xs"
+              onClick={() => setShowPreviewDrawer(!showPreviewDrawer)}
+              aria-label="Toggle email preview"
             >
-              <Columns className="size-3.5 mr-1" /> Split View
-            </Button>
-            <Button
-              type="button"
-              variant={viewMode === "editor" ? "default" : "ghost"}
-              size="sm"
-              className="h-7 px-2.5 text-xs font-semibold"
-              onClick={() => setViewMode("editor")}
-              title="Full Width Editor"
-            >
-              <Edit3 className="size-3.5 mr-1" /> Editor
-            </Button>
-            <Button
-              type="button"
-              variant={viewMode === "preview" ? "default" : "ghost"}
-              size="sm"
-              className="h-7 px-2.5 text-xs font-semibold"
-              onClick={() => setViewMode("preview")}
-              title="Full Width Live Preview"
-            >
-              <Eye className="size-3.5 mr-1" /> Preview
+              <Eye className="size-3.5 mr-1.5" />
+              {showPreviewDrawer ? "Hide Preview" : "Live Preview"}
             </Button>
           </div>
-        </div>
-      </header>
+        }
+      />
 
-      {/* Main Composer Layout */}
-      <div
-        className={`grid gap-6 ${
-          viewMode === "split"
-            ? "lg:grid-cols-2"
-            : viewMode === "editor"
-              ? "grid-cols-1"
-              : "grid-cols-1"
-        }`}
-      >
-        {/* Editor Form Card */}
-        {(viewMode === "split" || viewMode === "editor") && (
-          <Card className="space-y-5 p-6 border-border/80 shadow-xs">
-            <div className="space-y-1.5">
-              <Label htmlFor="subject" className="text-xs font-semibold">Subject Line</Label>
-              <Input
-                id="subject"
-                value={subject}
-                maxLength={200}
-                placeholder="A little something for you…"
-                onChange={(e) => setSubject(e.target.value)}
-              />
-            </div>
+      {/* Step Indicator Header Bar */}
+      <div className="glass-panel rounded-xl p-4 border border-border/80 shadow-xs">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {steps.map((step) => {
+            const StepIcon = step.icon;
+            const isActive = currentStep === step.number;
+            const isDone = currentStep > step.number;
 
-            <div className="space-y-1.5">
-              <Label htmlFor="offer" className="text-xs font-semibold">Tracked Offer Link</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="offer"
-                  value={offerUrl}
-                  placeholder="https://example.com/offer"
-                  onChange={(e) => setOfferUrl(e.target.value)}
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={!offerUrl.trim() || checking}
-                  onClick={runCheck}
-                  className="h-10 text-xs shrink-0"
+            return (
+              <button
+                type="button"
+                key={step.number}
+                onClick={() => setCurrentStep(step.number as Step)}
+                className={cn(
+                  "flex items-center gap-3 rounded-lg p-2.5 text-left transition-all",
+                  isActive
+                    ? "bg-primary/10 border border-primary/30 ring-1 ring-primary/20"
+                    : isDone
+                      ? "bg-muted/40 hover:bg-muted/70"
+                      : "opacity-60 hover:opacity-100"
+                )}
+              >
+                <div
+                  className={cn(
+                    "flex size-8 items-center justify-center rounded-full text-xs font-bold shrink-0 transition-colors",
+                    isActive
+                      ? "bg-primary text-primary-foreground"
+                      : isDone
+                        ? "bg-success text-success-foreground"
+                        : "bg-muted text-muted-foreground"
+                  )}
                 >
-                  {checking ? <Loader2 className="size-4 animate-spin" /> : "Check Link"}
-                </Button>
+                  {isDone ? <CheckCircle2 className="size-4" /> : step.number}
+                </div>
+                <div className="hidden xs:block min-w-0">
+                  <div className={cn("text-xs font-bold truncate", isActive ? "text-primary" : "text-foreground")}>
+                    {step.title}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground truncate">{step.description}</div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Main Grid: Wizard Form on Left (2 cols), Right Rail on Right (1 col) */}
+      <div className="grid gap-6 lg:grid-cols-3">
+        {/* Left Column: Wizard Step Forms */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* STEP 1: CONTENT */}
+          {currentStep === 1 && (
+            <div className="glass-panel rounded-xl p-6 border border-border/80 space-y-5 shadow-xs">
+              <div className="border-b border-border/60 pb-3">
+                <h2 className="text-base font-bold font-heading flex items-center gap-2">
+                  <Edit3 className="size-4.5 text-primary" /> Step 1: Subject Line & Body Content
+                </h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Draft an engaging subject line and personalized email body HTML.
+                </p>
               </div>
 
-              {linkResult && (
-                <div
-                  className={`mt-2 rounded-lg border p-3 text-xs ${
-                    linkResult.ok
-                      ? "border-emerald-500/40 bg-emerald-500/5 text-emerald-900 dark:text-emerald-300"
-                      : "border-destructive/40 bg-destructive/5 text-destructive"
-                  }`}
-                >
-                  <div className="flex items-center gap-2 font-bold">
-                    {linkResult.ok ? (
-                      <ShieldCheck className="size-4 text-emerald-600" />
-                    ) : (
-                      <ShieldAlert className="size-4 text-destructive" />
-                    )}
-                    {linkResult.ok ? "Secure and Reachable" : "Link Cannot Be Sent"}
+              <div className="space-y-1.5">
+                <Label htmlFor="subject" className="text-xs font-semibold">Subject Line</Label>
+                <Input
+                  id="subject"
+                  value={subject}
+                  maxLength={200}
+                  placeholder="A little something for you…"
+                  onChange={(e) => setSubject(e.target.value)}
+                  className="h-10 text-sm bg-card"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-semibold">Email Body Content</Label>
+                  <div className="flex items-center gap-1.5 text-xs">
+                    <Tag className="size-3 text-muted-foreground" />
+                    <span className="text-muted-foreground">Insert Tag:</span>
+                    <button
+                      type="button"
+                      aria-label="Insert {{name}} tag"
+                      className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs hover:bg-muted/80 text-foreground"
+                      onClick={() => insertTag("{{name}}")}
+                    >
+                      {"{{name}}"}
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Insert {{offer_link}} tag"
+                      className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs hover:bg-muted/80 text-foreground"
+                      onClick={() => insertTag("{{offer_link}}")}
+                    >
+                      {"{{offer_link}}"}
+                    </button>
                   </div>
                 </div>
-              )}
-            </div>
+                <RichTextEditor value={bodyHtml} onChange={setBodyHtml} />
+              </div>
 
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <Label className="text-xs font-semibold">Email Body Content</Label>
-                <div className="flex items-center gap-1.5 text-xs">
-                  <Tag className="size-3 text-muted-foreground" />
-                  <span className="text-muted-foreground">Tags:</span>
-                  <button
+              <div className="flex justify-end gap-2 pt-2 border-t border-border/60">
+                <Button
+                  onClick={() => {
+                    if (!subject.trim()) {
+                      toast.error("Subject is required");
+                      return;
+                    }
+                    setCurrentStep(2);
+                  }}
+                  className="gap-1.5 shadow-xs"
+                >
+                  Next: Add Links <ArrowRight className="size-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 2: LINKS */}
+          {currentStep === 2 && (
+            <div className="glass-panel rounded-xl p-6 border border-border/80 space-y-5 shadow-xs">
+              <div className="border-b border-border/60 pb-3">
+                <h2 className="text-base font-bold font-heading flex items-center gap-2">
+                  <Link2 className="size-4.5 text-primary" /> Step 2: Tracked Offer Link
+                </h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Configure and verify offer URLs to track recipient click engagements.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="offer" className="text-xs font-semibold">Tracked Offer Link</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="offer"
+                    value={offerUrl}
+                    placeholder="https://example.com/offer"
+                    onChange={(e) => setOfferUrl(e.target.value)}
+                    className="h-10 text-sm bg-card"
+                  />
+                  <Button
                     type="button"
-                    className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs hover:bg-muted/80"
-                    onClick={() => insertTag("{{name}}")}
+                    variant="outline"
+                    disabled={!offerUrl.trim() || checking}
+                    onClick={runCheck}
+                    className="h-10 text-xs shrink-0"
+                    aria-label="Check link safety"
                   >
-                    {"{{name}}"}
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs hover:bg-muted/80"
-                    onClick={() => insertTag("{{offer_link}}")}
+                    {checking ? <Loader2 className="size-4 animate-spin" /> : "Check Link Safety"}
+                  </Button>
+                </div>
+
+                {linkResult && (
+                  <div
+                    className={cn(
+                      "mt-3 rounded-lg border p-3.5 text-xs",
+                      linkResult.ok
+                        ? "border-success/40 bg-success/10 text-foreground"
+                        : "border-destructive/40 bg-destructive/10 text-destructive"
+                    )}
                   >
-                    {"{{offer_link}}"}
-                  </button>
+                    <div className="flex items-center gap-2 font-bold">
+                      {linkResult.ok ? (
+                        <ShieldCheck className="size-4 text-success" />
+                      ) : (
+                        <ShieldAlert className="size-4 text-destructive" />
+                      )}
+                      {linkResult.ok ? "Secure & Reachable URL" : "Link Verification Failed"}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-between gap-2 pt-2 border-t border-border/60">
+                <Button variant="outline" onClick={() => setCurrentStep(1)} className="gap-1.5">
+                  <ArrowLeft className="size-4" /> Back to Content
+                </Button>
+                <Button onClick={() => setCurrentStep(3)} className="gap-1.5 shadow-xs">
+                  Next: Select Audience <ArrowRight className="size-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 3: RECIPIENTS */}
+          {currentStep === 3 && (
+            <div className="glass-panel rounded-xl p-6 border border-border/80 space-y-5 shadow-xs">
+              <div className="border-b border-border/60 pb-3">
+                <h2 className="text-base font-bold font-heading flex items-center gap-2">
+                  <Users className="size-4.5 text-primary" /> Step 3: Audience & Recipients
+                </h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Review audience list and subscriber state before initiating delivery.
+                </p>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-lg border border-border bg-card p-4 space-y-1">
+                  <span className="text-xs text-muted-foreground font-semibold uppercase">Subscribed Leads</span>
+                  <div className="text-2xl font-extrabold text-foreground tabular-nums">{recipients}</div>
+                  <p className="text-[11px] text-muted-foreground">Will receive this campaign send</p>
+                </div>
+                <div className="rounded-lg border border-border bg-card p-4 space-y-1">
+                  <span className="text-xs text-muted-foreground font-semibold uppercase">Suppressed / Opted Out</span>
+                  <div className="text-2xl font-extrabold text-muted-foreground tabular-nums">
+                    {leads.length - recipients}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">Protected from delivery</p>
                 </div>
               </div>
-              <RichTextEditor value={bodyHtml} onChange={setBodyHtml} />
+
+              <div className="rounded-lg border border-border/80 bg-muted/20 p-4 space-y-2">
+                <h3 className="text-xs font-semibold text-foreground">Sample Recipient Preview</h3>
+                <div className="divide-y divide-border/60 text-xs">
+                  {subscribedLeads.slice(0, 4).map((lead) => (
+                    <div key={lead.id} className="py-2 flex items-center justify-between">
+                      <div>
+                        <span className="font-medium text-foreground">{lead.name || "Subscriber"}</span>
+                        <span className="text-muted-foreground block text-[11px]">{lead.email}</span>
+                      </div>
+                      <StatusBadge status="active" label="Subscribed" />
+                    </div>
+                  ))}
+                  {subscribedLeads.length === 0 && (
+                    <p className="py-2 text-xs text-muted-foreground">No active subscribed leads found in your list.</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex justify-between gap-2 pt-2 border-t border-border/60">
+                <Button variant="outline" onClick={() => setCurrentStep(2)} className="gap-1.5">
+                  <ArrowLeft className="size-4" /> Back to Links
+                </Button>
+                <Button onClick={() => setCurrentStep(4)} className="gap-1.5 shadow-xs">
+                  Next: Final Review <ArrowRight className="size-4" />
+                </Button>
+              </div>
             </div>
+          )}
 
-            <PreSendChecklist
-              recipientCount={recipients}
-              dailyCap={settings?.daily_cap || 100}
-              monthlyCap={settings?.monthly_cap || 3000}
-              senderConfigured={senderConfigured}
-              linkVerified={linkVerified}
-              hasPlainText={Boolean(bodyHtml.trim())}
-              scheduledTime={isScheduling ? scheduledFor : undefined}
-            />
-
-            {isScheduling && (
-              <div className="space-y-2 rounded-lg border border-border p-3.5 bg-muted/20">
-                <Label
-                  htmlFor="scheduleTime"
-                  className="flex items-center gap-1.5 text-xs font-semibold"
-                >
-                  <Calendar className="size-3.5 text-primary" /> Select Send Date & Time (IST)
-                </Label>
-                <Input
-                  id="scheduleTime"
-                  type="datetime-local"
-                  value={scheduledFor}
-                  onChange={(e) => setScheduledFor(e.target.value)}
-                />
+          {/* STEP 4: REVIEW & LAUNCH */}
+          {currentStep === 4 && (
+            <div className="glass-panel rounded-xl p-6 border border-border/80 space-y-5 shadow-xs">
+              <div className="border-b border-border/60 pb-3">
+                <h2 className="text-base font-bold font-heading flex items-center gap-2">
+                  <Layers className="size-4.5 text-primary" /> Step 4: Final Review & Launch
+                </h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Confirm scheduling options, verify sender details, and launch campaign.
+                </p>
               </div>
-            )}
 
-            {!senderVerified && (
-              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-900 dark:text-amber-300">
-                <span>No verified sender address is configured, so sending is disabled.</span>
-                <Link to="/settings" className="font-semibold underline underline-offset-2">
-                  Add in Settings
-                </Link>
+              <div className="space-y-3 rounded-lg border border-border/80 bg-muted/20 p-4 text-xs">
+                <div className="flex justify-between border-b border-border/60 pb-2">
+                  <span className="text-muted-foreground">Subject:</span>
+                  <strong className="text-foreground">{subject || "(No subject set)"}</strong>
+                </div>
+                <div className="flex justify-between border-b border-border/60 pb-2">
+                  <span className="text-muted-foreground">Offer URL:</span>
+                  <strong className="text-foreground font-mono">{offerUrl || "(None)"}</strong>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Target Recipients:</span>
+                  <strong className="text-foreground">{recipients} subscribed leads</strong>
+                </div>
               </div>
-            )}
 
-            <div className="flex flex-wrap items-center gap-3 pt-2">
-              <Button
-                variant="outline"
-                disabled={
-                  draftMutation.isPending || sendMutation.isPending || scheduleMutation.isPending
-                }
-                onClick={() => draftMutation.mutate()}
-                className="h-10 text-xs font-medium"
-              >
-                Save Draft
-              </Button>
-
-              {!isScheduling ? (
-                <Button type="button" variant="outline" onClick={() => setIsScheduling(true)} className="h-10 text-xs font-medium">
-                  <Clock className="size-3.5 mr-1.5 text-primary" /> Schedule…
-                </Button>
-              ) : (
-                <Button
-                  disabled={
-                    scheduleMutation.isPending ||
-                    !scheduledFor ||
-                    recipients === 0 ||
-                    !linkVerified ||
-                    !senderVerified
-                  }
-                  onClick={() => scheduleMutation.mutate()}
-                  className="h-10 text-xs font-medium"
-                >
-                  <Calendar className="size-3.5 mr-1.5" /> Schedule for IST
-                </Button>
+              {isScheduling && (
+                <div className="space-y-2 rounded-lg border border-border p-4 bg-card">
+                  <Label htmlFor="scheduleTime" className="flex items-center gap-1.5 text-xs font-semibold">
+                    <Calendar className="size-3.5 text-primary" /> Select Send Date & Time (IST)
+                  </Label>
+                  <Input
+                    id="scheduleTime"
+                    type="datetime-local"
+                    value={scheduledFor}
+                    onChange={(e) => setScheduledFor(e.target.value)}
+                    className="h-10 text-sm"
+                  />
+                </div>
               )}
 
-              <Button
-                disabled={
-                  sendMutation.isPending ||
-                  draftMutation.isPending ||
-                  scheduleMutation.isPending ||
-                  recipients === 0 ||
-                  !linkVerified ||
-                  !senderVerified
-                }
-                onClick={() => sendMutation.mutate()}
-                className="h-10 text-xs font-semibold shadow-sm"
-              >
-                <Send className="size-3.5 mr-1.5" />
-                {sendMutation.isPending ? "Starting…" : `Send to ${recipients} Now`}
-              </Button>
-            </div>
-          </Card>
-        )}
+              {!senderVerified && (
+                <div className="flex items-center justify-between rounded-lg border border-warning/40 bg-warning/10 p-3 text-xs text-foreground">
+                  <span>No verified sender address configured. Campaign sending is disabled.</span>
+                  <Button asChild size="sm" variant="outline" className="h-7 text-xs">
+                    <Link to="/settings">Settings</Link>
+                  </Button>
+                </div>
+              )}
 
-        {/* Live Recipient Preview Card */}
-        {(viewMode === "split" || viewMode === "preview") && (
-          <CampaignPreview subject={subject} offerUrl={offerUrl} bodyHtml={bodyHtml} />
-        )}
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-border/60">
+                <Button variant="outline" onClick={() => setCurrentStep(3)} className="gap-1.5">
+                  <ArrowLeft className="size-4" /> Back to Audience
+                </Button>
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    disabled={
+                      draftMutation.isPending || sendMutation.isPending || scheduleMutation.isPending
+                    }
+                    onClick={() => draftMutation.mutate()}
+                    className="h-10 text-xs font-medium"
+                  >
+                    Save Draft
+                  </Button>
+
+                  {!isScheduling ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setIsScheduling(true)}
+                      className="h-10 text-xs font-medium"
+                    >
+                      <Clock className="size-3.5 mr-1.5 text-primary" /> Schedule…
+                    </Button>
+                  ) : (
+                    <Button
+                      disabled={
+                        scheduleMutation.isPending ||
+                        !scheduledFor ||
+                        recipients === 0 ||
+                        !linkVerified ||
+                        !senderVerified
+                      }
+                      onClick={() => scheduleMutation.mutate()}
+                      className="h-10 text-xs font-medium"
+                    >
+                      <Calendar className="size-3.5 mr-1.5" /> Schedule for IST
+                    </Button>
+                  )}
+
+                  <Button
+                    disabled={
+                      sendMutation.isPending ||
+                      draftMutation.isPending ||
+                      scheduleMutation.isPending ||
+                      recipients === 0 ||
+                      !linkVerified ||
+                      !senderVerified
+                    }
+                    onClick={() => sendMutation.mutate()}
+                    className="h-10 text-xs font-semibold shadow-xs"
+                  >
+                    <Send className="size-3.5 mr-1.5" />
+                    {sendMutation.isPending ? "Starting…" : `Send to ${recipients} Now`}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Live Preview Card Below or Modal */}
+          {showPreviewDrawer && (
+            <CampaignPreview subject={subject} offerUrl={offerUrl} bodyHtml={bodyHtml} />
+          )}
+        </div>
+
+        {/* Right Column: Persistent Right Rail (Checklist & Quick Actions) */}
+        <div className="space-y-6">
+          <PreSendChecklist
+            recipientCount={recipients}
+            dailyCap={settings?.daily_cap || 100}
+            monthlyCap={settings?.monthly_cap || 3000}
+            senderConfigured={senderConfigured}
+            linkVerified={linkVerified}
+            hasPlainText={Boolean(bodyHtml.trim())}
+            scheduledTime={isScheduling ? scheduledFor : undefined}
+          />
+        </div>
       </div>
     </div>
   );

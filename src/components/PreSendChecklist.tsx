@@ -3,13 +3,9 @@ import {
   XCircle,
   AlertTriangle,
   ShieldCheck,
-  Clock,
-  Mail,
-  Users,
-  FileText,
 } from "lucide-react";
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/patterns";
+import { cn } from "@/lib/utils";
 
 export interface ChecklistItem {
   id: string;
@@ -27,6 +23,7 @@ export function PreSendChecklist({
   linkVerified,
   hasPlainText,
   scheduledTime,
+  className,
 }: {
   recipientCount: number;
   dailyCap: number;
@@ -35,93 +32,98 @@ export function PreSendChecklist({
   linkVerified: boolean;
   hasPlainText: boolean;
   scheduledTime?: string | undefined;
+  className?: string;
 }) {
   const capExceeded = recipientCount > dailyCap;
   const items: ChecklistItem[] = [
     {
       id: "recipients",
-      label: "Recipient Count & Cap Impact",
+      label: "Recipients & Daily Cap",
       passed: recipientCount > 0 && !capExceeded,
       message: capExceeded
         ? `Recipient count (${recipientCount}) exceeds daily cap (${dailyCap})`
         : recipientCount > 0
-          ? `${recipientCount} subscribed lead(s) within daily cap (${dailyCap})`
-          : "No subscribed leads available to send to",
+          ? `${recipientCount} lead(s) within daily cap (${dailyCap})`
+          : "No subscribed leads available",
     },
     {
       id: "sender",
-      label: "Sender Identity & Footer",
+      label: "Sender Identity",
       passed: senderConfigured,
       message: senderConfigured
-        ? "Registered business name & postal address ready"
+        ? "Business address & footer verified"
         : "Missing business address in Settings",
     },
     {
       id: "unsubscribe",
-      label: "Unsubscribe & Headers",
+      label: "One-Click Unsubscribe",
       passed: true,
-      message: "RFC 8058 One-Click List-Unsubscribe & footer ready",
+      message: "RFC 8058 List-Unsubscribe enabled",
     },
     {
       id: "plaintext",
-      label: "Plain-Text Fallback (body_text)",
+      label: "Plain-Text Fallback",
       passed: true,
       message: hasPlainText
         ? "Custom plain-text fallback present"
-        : "Auto-generated plain-text fallback enabled",
+        : "Auto-generated fallback active",
     },
     {
       id: "linksafety",
       label: "Link Safety Verification",
       passed: linkVerified,
       message: linkVerified
-        ? "All URLs inspected & verified safe"
-        : "Offer link must be verified before sending",
+        ? "All URLs inspected & safe"
+        : "Offer link safety check required",
     },
     {
       id: "schedule",
-      label: "Send Time",
+      label: "Delivery Timing",
       passed: true,
       message: scheduledTime
-        ? `Scheduled for ${new Date(scheduledTime).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })} (IST)`
-        : "Send immediately upon approval",
+        ? `Scheduled for ${new Date(scheduledTime).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`
+        : "Immediate send upon approval",
     },
   ];
 
   const allPassed = items.every((i) => i.passed);
 
   return (
-    <Card className="p-5 space-y-4 border-primary/20 bg-muted/10">
-      <div className="flex items-center justify-between">
-        <h3 className="font-semibold text-base flex items-center gap-2">
-          <ShieldCheck className="size-5 text-primary" /> Pre-Send Release Checklist
+    <div className={cn("glass-panel rounded-xl p-5 border-border/80 space-y-4 shadow-xs", className)}>
+      <div className="flex items-center justify-between gap-2 border-b border-border/60 pb-3">
+        <h3 className="font-heading font-bold text-sm flex items-center gap-2 text-foreground">
+          <ShieldCheck className="size-4.5 text-primary" /> Pre-Send Checklist
         </h3>
-        <Badge variant={allPassed ? "default" : "destructive"}>
-          {allPassed ? "Passed — Ready to Send" : "Checklist Issues Pending"}
-        </Badge>
+        <StatusBadge
+          status={allPassed ? "sent" : "bounce"}
+          label={allPassed ? "Ready to Send" : "Issues Pending"}
+        />
       </div>
 
-      <ul className="space-y-2.5 text-sm">
+      <ul className="space-y-3 text-xs">
         {items.map((item) => (
           <li key={item.id} className="flex items-start gap-2.5">
             {item.passed ? (
-              <CheckCircle2 className="size-4 text-emerald-600 mt-0.5 shrink-0" />
+              <CheckCircle2 className="size-4 text-success mt-0.5 shrink-0" />
             ) : item.warning ? (
-              <AlertTriangle className="size-4 text-amber-500 mt-0.5 shrink-0" />
+              <AlertTriangle className="size-4 text-warning mt-0.5 shrink-0" />
             ) : (
               <XCircle className="size-4 text-destructive mt-0.5 shrink-0" />
             )}
-            <div>
-              <span className="font-medium">{item.label}: </span>
-              <span
-                className={item.passed ? "text-muted-foreground" : "text-destructive font-medium"}
+            <div className="space-y-0.5">
+              <span className="font-semibold text-foreground">{item.label}</span>
+              <p
+                className={cn(
+                  "text-[11px] leading-tight",
+                  item.passed ? "text-muted-foreground" : "text-destructive font-medium"
+                )}
               >
                 {item.message}
-              </span>
+              </p>
             </div>
           </li>
         ))}
       </ul>
-    </Card>
+    </div>
   );
 }

@@ -2,7 +2,6 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
 import {
-  Settings,
   Save,
   ShieldCheck,
   ShieldAlert,
@@ -16,6 +15,8 @@ import {
   Copy,
   CheckCircle2,
   RefreshCw,
+  Sliders,
+  Lock,
 } from "lucide-react";
 import {
   defaultSettings,
@@ -26,7 +27,6 @@ import {
   verifyDomainDnsRecords,
   type SettingsInput,
 } from "@/lib/settings.functions";
-import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -36,6 +36,7 @@ import { SkeletonCard } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { validateSenderAddress } from "@/lib/sender";
 import { ContactFormDialog } from "@/components/ContactFormDialog";
+import { PageHeader, StatusBadge } from "@/components/patterns";
 
 export const Route = createFileRoute("/settings")({
   head: () => ({
@@ -149,23 +150,123 @@ function SettingsPage() {
   const records = dnsData?.records || [];
 
   return (
-    <div className="space-y-8 max-w-4xl">
-      <header className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight font-heading flex items-center gap-2.5">
-            <Settings className="size-7 text-primary" /> Settings & Identity
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Configure business identity details required for compliance, delivery throttling, and sending caps.
-          </p>
-        </div>
-        <ContactFormDialog />
-      </header>
+    <div className="space-y-6 max-w-4xl">
+      <PageHeader
+        title="Settings & Identity"
+        description="Configure business identity, DNS domain verification, sending caps, and deliverability safeguards."
+        actions={<ContactFormDialog />}
+      />
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        <Card className="p-6 space-y-5 border-border/80 shadow-xs">
-          <h2 className="text-base font-bold border-b border-border pb-3 flex items-center gap-2 font-heading">
-            <Building className="size-5 text-primary" /> Business & Sender Identity
+        {/* SECTION 1: LIVE DNS & DOMAIN VERIFICATION (PRIMARY CARD) */}
+        <div className="glass-panel rounded-xl p-6 border border-border/80 space-y-5 shadow-xs">
+          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border/60 pb-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-bold font-heading flex items-center gap-2 text-foreground">
+                  <Globe className="size-5 text-primary" /> Live DNS & Domain Verification
+                </h2>
+                <StatusBadge status="sent" label="Active & Verified" />
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Target domain: <code className="font-mono font-semibold text-foreground">{targetDomain}</code>. Verify SPF, DKIM, and DMARC records.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => verifyDnsMutation.mutate(targetDomain)}
+              disabled={verifyDnsMutation.isPending}
+              className="h-8 text-xs font-semibold"
+              aria-label="Re-check DNS verification"
+            >
+              <RefreshCw
+                className={`size-3.5 mr-1.5 ${verifyDnsMutation.isPending ? "animate-spin" : ""}`}
+              />
+              Re-check Verification
+            </Button>
+          </div>
+
+          <div className="rounded-lg border border-success/30 bg-success/5 p-3.5 text-xs flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-foreground">
+              <ShieldCheck className="size-4 text-success shrink-0" />
+              <span>
+                Domain identity <strong className="font-mono">{targetDomain}</strong> is fully verified for production sending.
+              </span>
+            </div>
+            <span className="font-mono text-[11px] text-muted-foreground">DKIM 2048-bit active</span>
+          </div>
+
+          <div className="space-y-3">
+            {records.map((rec) => (
+              <div key={rec.id} className="rounded-lg border border-border/80 bg-muted/20 p-4 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="font-mono font-bold text-xs bg-muted">
+                      {rec.type}
+                    </Badge>
+                    <span className="font-medium text-xs text-foreground">{rec.purpose}</span>
+                  </div>
+                  <StatusBadge status={rec.status === "verified" ? "sent" : "info"} label={rec.status === "verified" ? "Verified" : "Recommended"} />
+                </div>
+
+                <div className="grid gap-2 sm:grid-cols-2 text-xs">
+                  <div className="space-y-1">
+                    <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                      Record Name / Host
+                    </span>
+                    <div className="flex items-center justify-between rounded border border-border bg-card px-2.5 py-1.5 font-mono text-xs">
+                      <span className="truncate pr-2 text-foreground">{rec.name}</span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="size-6 shrink-0 text-muted-foreground hover:text-foreground"
+                        onClick={() => {
+                          navigator.clipboard.writeText(rec.name);
+                          toast.success(`Copied Name for ${rec.id.toUpperCase()} to clipboard!`);
+                        }}
+                        title="Copy Record Name"
+                        aria-label={`Copy Record Name for ${rec.id}`}
+                      >
+                        <Copy className="size-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                      Record Value / Content
+                    </span>
+                    <div className="flex items-center justify-between rounded border border-border bg-card px-2.5 py-1.5 font-mono text-xs">
+                      <span className="truncate pr-2 text-foreground">{rec.value}</span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="size-6 shrink-0 text-muted-foreground hover:text-foreground"
+                        onClick={() => {
+                          navigator.clipboard.writeText(rec.value);
+                          toast.success(`Copied Value for ${rec.id.toUpperCase()} to clipboard!`);
+                        }}
+                        title="Copy Record Value"
+                        aria-label={`Copy Record Value for ${rec.id}`}
+                      >
+                        <Copy className="size-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* SECTION 2: SENDER PROFILE */}
+        <div className="glass-panel rounded-xl p-6 border border-border/80 space-y-5 shadow-xs">
+          <h2 className="text-base font-bold border-b border-border/60 pb-3 flex items-center gap-2 font-heading text-foreground">
+            <Building className="size-5 text-primary" /> Sender Profile & Business Identity
           </h2>
 
           <div className="grid gap-4 sm:grid-cols-2">
@@ -179,6 +280,7 @@ function SettingsPage() {
                 onChange={(e) => setForm({ ...form, business_name: e.target.value })}
                 placeholder="Acme Corp"
                 required
+                className="h-10 text-sm bg-card"
               />
             </div>
 
@@ -193,6 +295,7 @@ function SettingsPage() {
                 onChange={(e) => setForm({ ...form, support_email: e.target.value })}
                 placeholder="support@example.com"
                 required
+                className="h-10 text-sm bg-card"
               />
             </div>
           </div>
@@ -200,7 +303,7 @@ function SettingsPage() {
           <div className="space-y-1.5">
             <Label htmlFor="postal_address" className="flex items-center gap-1.5 text-xs font-semibold">
               <MapPin className="size-3.5 text-muted-foreground" /> Physical Postal Address
-              (Appended to footers)
+              (Appended to CAN-SPAM footers)
             </Label>
             <Input
               id="postal_address"
@@ -208,184 +311,52 @@ function SettingsPage() {
               onChange={(e) => setForm({ ...form, postal_address: e.target.value })}
               placeholder="Suite 402, Apex Towers, Bandra West, Mumbai, MH 400050"
               required
+              className="h-10 text-sm bg-card"
             />
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="sender_domain" className="flex items-center gap-1.5 text-xs font-semibold">
-              <Globe className="size-3.5 text-muted-foreground" /> Verified Sending Domain
-            </Label>
-            <Input
-              id="sender_domain"
-              value={form.sender_domain}
-              onChange={(e) => setForm({ ...form, sender_domain: e.target.value })}
-              placeholder="notify.designforge.me"
-              required
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="from_address" className="flex items-center gap-1.5 text-xs font-semibold">
-                <AtSign className="size-3.5 text-muted-foreground" /> Sender Address (Verified "from" address)
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="sender_domain" className="flex items-center gap-1.5 text-xs font-semibold">
+                <Globe className="size-3.5 text-muted-foreground" /> Verified Sending Domain
               </Label>
-              {form.from_address.trim() ? (
-                senderValidation.isValid ? (
-                  <span className="flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                    <ShieldCheck className="size-3.5" /> Verified Format & Domain
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-1 text-xs font-semibold text-destructive">
-                    <ShieldAlert className="size-3.5" /> Invalid Sender Address
-                  </span>
-                )
-              ) : null}
-            </div>
-            <Input
-              id="from_address"
-              value={form.from_address}
-              onChange={(e) => setForm({ ...form, from_address: e.target.value })}
-              placeholder="campaigns@notify.designforge.me"
-              className={
-                form.from_address.trim()
-                  ? senderValidation.isValid
-                    ? "border-emerald-500/50 focus-visible:ring-emerald-500"
-                    : "border-destructive/50 focus-visible:ring-destructive"
-                  : ""
-              }
-            />
-            <p className="text-xs text-muted-foreground">
-              Must be an email address on your custom verified domain. Campaigns and test sends go out from this address.
-            </p>
-
-            {form.from_address.trim() && !senderValidation.isValid && (
-              <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive space-y-1">
-                <div className="flex items-center gap-1.5 font-bold">
-                  <ShieldAlert className="size-4 shrink-0" />
-                  Sender Address Validation Error
-                </div>
-                <p className="text-destructive/90">{senderValidation.message}</p>
-              </div>
-            )}
-          </div>
-        </Card>
-
-        {/* Resend DNS Domain Verification Records Section */}
-        <Card className="p-6 space-y-5 border-border/80 shadow-xs">
-          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border pb-3">
-            <div>
-              <h2 className="text-base font-bold flex items-center gap-2 font-heading">
-                <Globe className="size-5 text-primary" /> Resend DNS Domain Verification Records
-              </h2>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Exact DNS records required to verify{" "}
-                <code className="font-mono font-semibold text-foreground">{targetDomain}</code> for
-                production email delivery.
-              </p>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => verifyDnsMutation.mutate(targetDomain)}
-              disabled={verifyDnsMutation.isPending}
-              className="h-8 text-xs"
-            >
-              <RefreshCw
-                className={`size-3.5 mr-1.5 ${verifyDnsMutation.isPending ? "animate-spin" : ""}`}
+              <Input
+                id="sender_domain"
+                value={form.sender_domain}
+                onChange={(e) => setForm({ ...form, sender_domain: e.target.value })}
+                placeholder="notify.designforge.me"
+                required
+                className="h-10 text-sm bg-card"
               />
-              Re-check Verification
-            </Button>
-          </div>
-
-          <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3.5 text-xs flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300">
-              <ShieldCheck className="size-4 text-emerald-600 shrink-0" />
-              <span>
-                Sending Domain Target: <strong className="font-mono text-xs">{targetDomain}</strong>
-              </span>
             </div>
-            <Badge className="bg-emerald-600 text-white text-[10px]">
-              <CheckCircle2 className="size-3 mr-1 inline" /> Domain Status: Active & Verified
-            </Badge>
-          </div>
 
-          <div className="space-y-3">
-            {records.map((rec) => (
-              <div key={rec.id} className="rounded-lg border border-border/80 bg-background/50 p-4 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="font-mono font-bold text-xs bg-muted">
-                      {rec.type}
-                    </Badge>
-                    <span className="font-medium text-xs text-foreground">{rec.purpose}</span>
-                  </div>
-                  <Badge
-                    className={
-                      rec.status === "verified"
-                        ? "bg-emerald-600 text-white text-[10px]"
-                        : "bg-sky-600 text-white text-[10px]"
-                    }
-                  >
-                    <CheckCircle2 className="size-3 mr-1 inline" />
-                    {rec.status === "verified" ? "Verified" : "Recommended"}
-                  </Badge>
-                </div>
-
-                <div className="grid gap-2 sm:grid-cols-2 text-xs">
-                  <div className="space-y-1">
-                    <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
-                      Record Name / Host
-                    </span>
-                    <div className="flex items-center justify-between rounded border border-border bg-muted/40 px-2.5 py-1.5 font-mono text-xs">
-                      <span className="truncate pr-2">{rec.name}</span>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="size-6 shrink-0 text-muted-foreground hover:text-foreground"
-                        onClick={() => {
-                          navigator.clipboard.writeText(rec.name);
-                          toast.success(`Copied Name for ${rec.id.toUpperCase()} to clipboard!`);
-                        }}
-                        title="Copy Record Name"
-                      >
-                        <Copy className="size-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div className="space-y-1">
-                    <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
-                      Record Value / Content
-                    </span>
-                    <div className="flex items-center justify-between rounded border border-border bg-muted/40 px-2.5 py-1.5 font-mono text-xs">
-                      <span className="truncate pr-2">{rec.value}</span>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="size-6 shrink-0 text-muted-foreground hover:text-foreground"
-                        onClick={() => {
-                          navigator.clipboard.writeText(rec.value);
-                          toast.success(`Copied Value for ${rec.id.toUpperCase()} to clipboard!`);
-                        }}
-                        title="Copy Record Value"
-                      >
-                        <Copy className="size-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="from_address" className="flex items-center gap-1.5 text-xs font-semibold">
+                  <AtSign className="size-3.5 text-muted-foreground" /> Sender "From" Address
+                </Label>
+                {form.from_address.trim() && (
+                  <StatusBadge
+                    status={senderValidation.isValid ? "sent" : "bounce"}
+                    label={senderValidation.isValid ? "Valid Format" : "Invalid Format"}
+                  />
+                )}
               </div>
-            ))}
+              <Input
+                id="from_address"
+                value={form.from_address}
+                onChange={(e) => setForm({ ...form, from_address: e.target.value })}
+                placeholder="campaigns@notify.designforge.me"
+                className="h-10 text-sm bg-card"
+              />
+            </div>
           </div>
-        </Card>
+        </div>
 
-        {/* Sending Quota Progress & Delivery Controls */}
-        <Card className="p-6 space-y-5 border-border/80 shadow-xs">
-          <h2 className="text-base font-bold border-b border-border pb-3 flex items-center gap-2 font-heading">
-            <Gauge className="size-5 text-primary" /> Delivery Caps & Throttling
+        {/* SECTION 3: SENDING LIMITS & THROTTLING */}
+        <div className="glass-panel rounded-xl p-6 border border-border/80 space-y-5 shadow-xs">
+          <h2 className="text-base font-bold border-b border-border/60 pb-3 flex items-center gap-2 font-heading text-foreground">
+            <Gauge className="size-5 text-primary" /> Sending Limits & Rate Controls
           </h2>
 
           <div className="grid gap-4 sm:grid-cols-3">
@@ -398,16 +369,9 @@ function SettingsPage() {
                 onChange={(e) => setForm({ ...form, daily_cap: parseInt(e.target.value, 10) || 0 })}
                 min={1}
                 required
+                className="h-10 text-sm bg-card"
               />
-              <div className="pt-1.5 space-y-1">
-                <div className="flex justify-between text-[11px] text-muted-foreground font-medium">
-                  <span>Quota usage</span>
-                  <span>Max {form.daily_cap}/day</span>
-                </div>
-                <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
-                  <div className="h-full bg-primary rounded-full transition-all" style={{ width: "15%" }} />
-                </div>
-              </div>
+              <p className="text-[11px] text-muted-foreground">Max allowed sends per 24h window</p>
             </div>
 
             <div className="space-y-1.5">
@@ -421,16 +385,9 @@ function SettingsPage() {
                 }
                 min={1}
                 required
+                className="h-10 text-sm bg-card"
               />
-              <div className="pt-1.5 space-y-1">
-                <div className="flex justify-between text-[11px] text-muted-foreground font-medium">
-                  <span>Quota usage</span>
-                  <span>Max {form.monthly_cap}/mo</span>
-                </div>
-                <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
-                  <div className="h-full bg-emerald-500 rounded-full transition-all" style={{ width: "8%" }} />
-                </div>
-              </div>
+              <p className="text-[11px] text-muted-foreground">Max allowed sends per billing cycle</p>
             </div>
 
             <div className="space-y-1.5">
@@ -444,8 +401,9 @@ function SettingsPage() {
                 }
                 min={100}
                 required
+                className="h-10 text-sm bg-card"
               />
-              <p className="text-xs text-muted-foreground">Default 1100ms (~2 emails per sec)</p>
+              <p className="text-[11px] text-muted-foreground">Default 1100ms (~2 emails / sec)</p>
             </div>
           </div>
 
@@ -458,15 +416,15 @@ function SettingsPage() {
               value={form.timezone}
               onChange={(e) => setForm({ ...form, timezone: e.target.value })}
               readOnly
-              className="bg-muted"
+              className="h-10 text-sm bg-muted text-muted-foreground"
             />
           </div>
-        </Card>
+        </div>
 
-        {/* Safeguards */}
-        <Card className="p-6 space-y-5 border-border/80 shadow-xs">
-          <h2 className="text-base font-bold border-b border-border pb-3 flex items-center gap-2 font-heading">
-            <ShieldCheck className="size-5 text-primary" /> Security & Deliverability Safeguards
+        {/* SECTION 4: SECURITY & API SAFEGUARDS */}
+        <div className="glass-panel rounded-xl p-6 border border-border/80 space-y-5 shadow-xs">
+          <h2 className="text-base font-bold border-b border-border/60 pb-3 flex items-center gap-2 font-heading text-foreground">
+            <Lock className="size-5 text-primary" /> Security & API Safeguards
           </h2>
 
           {(
@@ -474,26 +432,26 @@ function SettingsPage() {
               [
                 "enforce_caps",
                 "Enforce sending caps",
-                "Stop the worker once the daily or monthly cap is reached.",
+                "Automatically pause queue worker when daily or monthly limit is reached.",
               ],
               [
                 "require_link_check",
                 "Require live link verification",
-                "Fetch every link before sending and block unreachable URLs.",
+                "Inspect every URL before sending to prevent broken links.",
               ],
               [
                 "block_url_shorteners",
-                "Block shortened links",
-                "Refuse to send campaigns containing bit.ly-style links.",
+                "Block URL shorteners",
+                "Reject bit.ly and short links to preserve domain reputation.",
               ],
               [
                 "auto_suppress_bounces",
-                "Auto-suppress bounces & complaints",
-                "Suppress a lead automatically when a hard bounce or complaint arrives.",
+                "Auto-suppress hard bounces",
+                "Immediately mark leads as suppressed when bounce event is recorded.",
               ],
             ] as const
           ).map(([key, label, help]) => (
-            <div key={key} className="flex items-start justify-between gap-4 rounded-lg border border-border/80 p-3.5">
+            <div key={key} className="flex items-start justify-between gap-4 rounded-lg border border-border/80 bg-muted/20 p-3.5">
               <div>
                 <Label htmlFor={key} className="text-xs font-semibold text-foreground">
                   {label}
@@ -504,37 +462,25 @@ function SettingsPage() {
                 id={key}
                 checked={form[key]}
                 onCheckedChange={(checked) => setForm({ ...form, [key]: checked })}
+                aria-label={`Toggle ${label}`}
               />
             </div>
           ))}
 
           <div className="rounded-lg bg-muted/40 p-3.5 text-xs space-y-2 border border-border/60">
-            <div className="flex items-center gap-2 font-medium">
-              {envStatus?.resendApiKey ? (
-                <ShieldCheck className="size-4 text-emerald-500" />
-              ) : (
-                <ShieldAlert className="size-4 text-amber-500" />
-              )}
-              <span>Email API key {envStatus?.resendApiKey ? "configured" : "missing"}</span>
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-foreground">Resend API Key Status</span>
+              <StatusBadge status={envStatus?.resendApiKey ? "sent" : "warning"} label={envStatus?.resendApiKey ? "Configured" : "Missing Key"} />
             </div>
-            <div className="flex items-center gap-2 font-medium">
-              {envStatus?.webhookSecret ? (
-                <ShieldCheck className="size-4 text-emerald-500" />
-              ) : (
-                <ShieldAlert className="size-4 text-amber-500" />
-              )}
-              <span>
-                Webhook signing secret{" "}
-                {envStatus?.webhookSecret
-                  ? "configured — signed delivery events are verified and recorded"
-                  : "missing — the webhook rejects all traffic until it is saved"}
-              </span>
+            <div className="flex items-center justify-between pt-1 border-t border-border/60">
+              <span className="font-semibold text-foreground">Webhook Signing Verification</span>
+              <StatusBadge status={envStatus?.webhookSecret ? "sent" : "warning"} label={envStatus?.webhookSecret ? "Active & Signed" : "Secret Missing"} />
             </div>
           </div>
-        </Card>
+        </div>
 
-        <div className="flex justify-end gap-3">
-          <Button type="submit" disabled={updateMutation.isPending} className="h-10 px-6 shadow-sm">
+        <div className="flex justify-end gap-3 pt-2">
+          <Button type="submit" disabled={updateMutation.isPending} className="h-10 px-6 shadow-xs" aria-label="Save all settings">
             <Save className="size-4 mr-2" />
             {updateMutation.isPending ? "Saving Settings…" : "Save Settings"}
           </Button>

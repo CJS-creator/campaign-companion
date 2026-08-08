@@ -3,17 +3,17 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { toast } from "sonner";
-import { Download, Search, Trash2, UserX, UserCheck, X, UserPlus, Users, Filter } from "lucide-react";
+import { Download, Search, Trash2, UserX, UserCheck, X, UserPlus, Users } from "lucide-react";
 import { LEADS_PAGE_SIZE, leadsPageQuery, type Lead, type LeadSort } from "@/lib/data";
 import { createLead, deleteLeads, fetchLeads, setLeadSubscription } from "@/lib/app.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SkeletonTable } from "@/components/ui/skeleton";
 import { LeadImport } from "@/components/LeadImport";
+import { PageHeader, StatusBadge, EmptyState } from "@/components/patterns";
 
 export const Route = createFileRoute("/leads")({
   head: () => ({
@@ -49,7 +49,6 @@ function LeadsPage() {
   const {
     data: pagedData,
     isLoading,
-    isFetching,
   } = useQuery(leadsPageQuery({ search: deferredSearch, sort, page }));
   const rawLeads = pagedData?.leads ?? [];
   const total = pagedData?.count ?? 0;
@@ -199,23 +198,19 @@ function LeadsPage() {
   const allOnPageSelected = leads.length > 0 && leads.every((l) => selectedIds.has(l.id));
 
   return (
-    <div className="space-y-8">
-      <header className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight font-heading">
-            Leads & Audience
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {total} {deferredSearch ? "matching" : "total"} subscriber{total === 1 ? "" : "s"}
-          </p>
-        </div>
-        <Button type="button" variant="outline" onClick={exportCsv} className="h-9 text-xs">
-          <Download className="size-3.5 mr-1.5" /> Export CSV
-        </Button>
-      </header>
+    <div className="space-y-6">
+      <PageHeader
+        title="Leads & Audience"
+        description={`${total} ${deferredSearch ? "matching" : "total"} subscriber${total === 1 ? "" : "s"} in list.`}
+        actions={
+          <Button type="button" variant="outline" onClick={exportCsv} className="h-9 text-xs" aria-label="Export CSV">
+            <Download className="size-3.5 mr-1.5" /> Export CSV
+          </Button>
+        }
+      />
 
       {/* Add Lead Form */}
-      <Card className="p-5 border-border/80 shadow-xs">
+      <div className="glass-panel rounded-xl p-5 border border-border/80 shadow-xs">
         <form
           className="grid gap-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end"
           onSubmit={(event) => {
@@ -233,6 +228,7 @@ function LeadsPage() {
               placeholder="subscriber@example.com"
               onChange={(event) => setEmail(event.target.value)}
               required
+              className="h-10 text-sm bg-card"
             />
           </div>
           <div className="space-y-1.5">
@@ -243,19 +239,20 @@ function LeadsPage() {
               maxLength={100}
               placeholder="Jane Doe"
               onChange={(event) => setName(event.target.value)}
+              className="h-10 text-sm bg-card"
             />
           </div>
-          <Button type="submit" disabled={addLead.isPending} className="h-10">
+          <Button type="submit" disabled={addLead.isPending} className="h-10 shadow-xs" aria-label="Add lead to list">
             <UserPlus className="size-4 mr-1.5" />
             {addLead.isPending ? "Adding…" : "Add Lead"}
           </Button>
         </form>
-      </Card>
+      </div>
 
       <LeadImport />
 
-      {/* Leads Table Card */}
-      <Card className="space-y-4 p-5 border-border/80 shadow-xs">
+      {/* Leads Table Container */}
+      <div className="glass-panel rounded-xl p-5 border border-border/80 space-y-4 shadow-xs">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
             <div className="relative w-full sm:w-64">
@@ -264,15 +261,17 @@ function LeadsPage() {
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="Search email or name…"
-                className="pl-9 pr-8"
+                aria-label="Search email or name"
+                className="pl-9 pr-8 h-9 text-xs bg-card"
               />
               {search && (
                 <button
                   type="button"
+                  aria-label="Clear search"
                   className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                   onClick={() => setSearch("")}
                 >
-                  <X className="size-4" />
+                  <X className="size-3.5" />
                 </button>
               )}
             </div>
@@ -304,7 +303,7 @@ function LeadsPage() {
                 className="h-7 px-2.5 text-xs font-semibold"
                 onClick={() => setStatusFilter("unsubscribed")}
               >
-                Unsubscribed
+                Suppressed
               </Button>
             </div>
           </div>
@@ -314,7 +313,8 @@ function LeadsPage() {
             <select
               value={sort}
               onChange={(event) => setSort(event.target.value as LeadSort)}
-              className="h-9 rounded-md border border-input bg-background px-3 text-xs font-medium text-foreground cursor-pointer"
+              aria-label="Sort leads by"
+              className="h-9 rounded-md border border-input bg-card px-3 text-xs font-medium text-foreground cursor-pointer"
             >
               <option value="created_desc">Newest Added</option>
               <option value="email_asc">Email A–Z</option>
@@ -327,7 +327,7 @@ function LeadsPage() {
 
         {/* Floating Bulk-Action Bar */}
         {selectedIds.size > 0 && (
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-card/95 backdrop-blur-md border border-border/80 p-2.5 px-5 rounded-full shadow-2xl animate-in fade-in slide-in-from-bottom-4">
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-card/95 backdrop-blur-md border border-border p-2.5 px-5 rounded-full shadow-2xl animate-in fade-in slide-in-from-bottom-4">
             <span className="text-xs font-bold text-foreground">
               {selectedIds.size} selected
             </span>
@@ -338,8 +338,9 @@ function LeadsPage() {
               onClick={() => bulkSubscriptionMutation.mutate(true)}
               disabled={bulkSubscriptionMutation.isPending}
               className="h-8 text-xs font-semibold"
+              aria-label="Resubscribe selected leads"
             >
-              <UserCheck className="size-3.5 mr-1 text-emerald-500" /> Resubscribe
+              <UserCheck className="size-3.5 mr-1 text-success" /> Resubscribe
             </Button>
             <Button
               size="sm"
@@ -347,8 +348,9 @@ function LeadsPage() {
               onClick={() => bulkSubscriptionMutation.mutate(false)}
               disabled={bulkSubscriptionMutation.isPending}
               className="h-8 text-xs font-semibold"
+              aria-label="Unsubscribe selected leads"
             >
-              <UserX className="size-3.5 mr-1 text-amber-500" /> Unsubscribe
+              <UserX className="size-3.5 mr-1 text-warning" /> Suppress
             </Button>
             <Button
               size="sm"
@@ -356,6 +358,7 @@ function LeadsPage() {
               onClick={() => bulkDeleteMutation.mutate()}
               disabled={bulkDeleteMutation.isPending}
               className="h-8 text-xs font-semibold"
+              aria-label="Delete selected leads"
             >
               <Trash2 className="size-3.5 mr-1" /> Delete
             </Button>
@@ -365,31 +368,33 @@ function LeadsPage() {
         {isLoading ? (
           <SkeletonTable rows={5} />
         ) : (
-          <div className="overflow-hidden rounded-lg border border-border">
+          <div className="overflow-hidden rounded-lg border border-border/80">
             <table className="w-full text-sm">
-              <thead className="border-b border-border bg-muted/50 text-left text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+              <thead className="border-b border-border/80 bg-muted/50 text-left text-xs uppercase tracking-wider text-muted-foreground font-semibold">
                 <tr>
                   <th className="w-10 px-3 py-3.5 text-center">
                     <Checkbox
                       checked={allOnPageSelected}
                       onCheckedChange={toggleSelectAll}
+                      aria-label="Select all leads on page"
                     />
                   </th>
                   <th className="px-4 py-3.5">Email / Name</th>
-                  <th className="px-4 py-3.5">Subscription</th>
+                  <th className="px-4 py-3.5">Suppression Status</th>
                   <th className="px-4 py-3.5">Added Date</th>
                   <th className="px-4 py-3.5 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border">
+              <tbody className="divide-y divide-border/60 bg-card">
                 {leads.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-5 py-12 text-center text-muted-foreground">
-                      <div className="flex flex-col items-center gap-2">
-                        <Users className="size-8 text-muted-foreground/60" />
-                        <p className="font-semibold text-sm">No subscriber leads found</p>
-                        <p className="text-xs">Add your first subscriber or import a CSV file above.</p>
-                      </div>
+                    <td colSpan={5} className="p-0">
+                      <EmptyState
+                        icon={Users}
+                        title="No Subscriber Leads Found"
+                        description="Add your first lead using the form above or import a CSV file."
+                        className="border-none rounded-none glass-panel shadow-none py-12"
+                      />
                     </td>
                   </tr>
                 ) : (
@@ -398,12 +403,13 @@ function LeadsPage() {
                     return (
                       <tr
                         key={lead.id}
-                        className={`hover:bg-muted/30 transition-colors ${isSelected ? "bg-accent/40" : ""}`}
+                        className={`hover:bg-accent/40 transition-colors ${isSelected ? "bg-accent/60" : ""}`}
                       >
                         <td className="px-3 py-3.5 text-center">
                           <Checkbox
                             checked={isSelected}
                             onCheckedChange={() => toggleSelectOne(lead.id)}
+                            aria-label={`Select lead ${lead.email}`}
                           />
                         </td>
                         <td className="px-4 py-3.5 font-medium">
@@ -411,16 +417,18 @@ function LeadsPage() {
                           {lead.name && <div className="text-xs text-muted-foreground">{lead.name}</div>}
                         </td>
                         <td className="px-4 py-3.5">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-3">
                             <Switch
                               checked={lead.subscribed}
                               onCheckedChange={(checked) =>
                                 toggleSubscribed.mutate({ lead, nextSubscribed: checked })
                               }
+                              aria-label={`Toggle subscription for ${lead.email}`}
                             />
-                            <span className="text-xs font-medium">
-                              {lead.subscribed ? "Subscribed" : "Unsubscribed"}
-                            </span>
+                            <StatusBadge
+                              status={lead.subscribed ? "active" : "suppressed"}
+                              label={lead.subscribed ? "Subscribed" : "Suppressed"}
+                            />
                           </div>
                         </td>
                         <td className="px-4 py-3.5 text-xs text-muted-foreground">
@@ -436,6 +444,7 @@ function LeadsPage() {
                               bulkDeleteMutation.mutate();
                             }}
                             title="Delete Lead"
+                            aria-label={`Delete lead ${lead.email}`}
                           >
                             <Trash2 className="size-4" />
                           </Button>
@@ -462,6 +471,7 @@ function LeadsPage() {
                 disabled={page === 0}
                 onClick={() => setPage((p) => p - 1)}
                 className="h-8 text-xs"
+                aria-label="Previous leads page"
               >
                 Previous
               </Button>
@@ -471,13 +481,14 @@ function LeadsPage() {
                 disabled={page >= totalPages - 1}
                 onClick={() => setPage((p) => p + 1)}
                 className="h-8 text-xs"
+                aria-label="Next leads page"
               >
                 Next
               </Button>
             </div>
           </div>
         )}
-      </Card>
+      </div>
     </div>
   );
 }

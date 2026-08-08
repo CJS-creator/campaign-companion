@@ -2,18 +2,19 @@ import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowLeft,
   RefreshCw,
   AlertCircle,
-  CheckCircle2,
   Copy,
   Calendar,
   Play,
   XCircle,
   OctagonX,
   Clock,
+  Eye,
+  MousePointerClick,
+  Mail,
 } from "lucide-react";
-import { campaignQuery, leadsQuery, sendsQuery, type Send } from "@/lib/data";
+import { campaignQuery, leadsQuery, sendsQuery } from "@/lib/data";
 import {
   retryFailedSends,
   retrySingleSend,
@@ -23,8 +24,6 @@ import {
   resumeCampaignSending,
   rescheduleCampaign,
 } from "@/lib/campaigns.functions";
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
@@ -42,20 +41,29 @@ import { isVerifiedSenderAddress } from "@/lib/sender";
 import { SendTestEmailDialog } from "@/components/SendTestEmailDialog";
 import { CheckSendingOptionDialog } from "@/components/CheckSendingOptionDialog";
 import { CampaignErrorLogsDialog } from "@/components/CampaignErrorLogsDialog";
+import { PageHeader, StatusBadge, StatCard, DataTable, type Column } from "@/components/patterns";
 
 export const Route = createFileRoute("/campaigns/$id")({
   head: () => ({
     meta: [
       { title: "Campaign detail — Postmark Studio" },
       { name: "description", content: "See who opened and clicked this email campaign." },
-      { property: "og:title", content: "Campaign detail — Postmark Studio" },
-      { property: "og:description", content: "See who opened and clicked this email campaign." },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
   component: CampaignDetail,
 });
+
+interface SendRowItem {
+  id: string;
+  lead_id: string;
+  lead_email: string;
+  status: string;
+  sent_at?: string | null;
+  opened_at?: string | null;
+  clicked_at?: string | null;
+  failure_reason?: string | null;
+  attempt_count: number;
+}
 
 function CampaignDetail() {
   const { id } = Route.useParams();
@@ -176,150 +184,191 @@ function CampaignDetail() {
   const failed = rows.filter((send) => send.status === "failed").length;
   const sending = rows.filter((send) => send.status === "sending").length;
   const queued = rows.filter((send) => send.status === "queued").length;
+  const openedCount = rows.filter((send) => send.opened_at).length;
+  const clickedCount = rows.filter((send) => send.clicked_at).length;
   const completed = delivered + failed;
   const progress = rows.length ? Math.round((completed / rows.length) * 100) : 0;
 
-  if (isLoading) return <p className="text-muted-foreground">Loading…</p>;
-  if (!campaign) return <p className="text-muted-foreground">Campaign not found.</p>;
+  if (isLoading) return <p className="text-muted-foreground p-6">Loading campaign details…</p>;
+  if (!campaign) return <p className="text-muted-foreground p-6">Campaign not found.</p>;
 
   const isProcessing = campaign.status === "queued" || campaign.status === "sending";
   const isScheduled = campaign.status === "scheduled";
 
+  const sendTableData: SendRowItem[] = rows.map((s) => ({
+    id: s.id,
+    lead_id: s.lead_id,
+    lead_email: leadById.get(s.lead_id)?.email ?? "Unknown",
+    status: s.status,
+    sent_at: s.sent_at,
+    opened_at: s.opened_at,
+    clicked_at: s.clicked_at,
+    failure_reason: s.failure_reason,
+    attempt_count: s.attempt_count,
+  }));
+
+  const columns: Column<SendRowItem>[] = [
+    {
+      key: "lead_email",
+      header: "Recipient",
+      cell: (row) => <span className="font-semibold text-foreground">{row.lead_email}</span>,
+    },
+    {
+      key: "status",
+      header: "Delivery Status",
+      cell: (row) => (
+        <StatusBadge
+          status={row.status}
+          label={row.status === "failed" ? `Failed (Attempt ${row.attempt_count})` : undefined}
+        />
+      ),
+    },
+    {
+      key: "sent_at",
+      header: "Sent At",
+      cell: (row) => <span className="text-muted-foreground text-xs">{row.sent_at ? new Date(row.sent_at).toLocaleString() : "—"}</span>,
+    },
+    {
+      key: "opened_at",
+      header: "Opened At",
+      cell: (row) => <span className="text-muted-foreground text-xs">{row.opened_at ? new Date(row.opened_at).toLocaleString() : "—"}</span>,
+    },
+    {
+      key: "clicked_at",
+      header: "Clicked At",
+      cell: (row) => <span className="text-muted-foreground text-xs">{row.clicked_at ? new Date(row.clicked_at).toLocaleString() : "—"}</span>,
+    },
+    {
+      key: "failure_reason",
+      header: "Failure Reason",
+      cell: (row) => (
+        <span className="font-mono text-xs text-destructive max-w-xs truncate block">
+          {row.failure_reason || "—"}
+        </span>
+      ),
+    },
+    {
+      key: "actions",
+      header: <span className="sr-only">Actions</span>,
+      className: "text-right w-24",
+      cell: (row) =>
+        row.status === "failed" ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-8 text-xs"
+            onClick={() => retrySingleMutation.mutate(row.id)}
+            disabled={retrySingleMutation.isPending}
+            aria-label={`Retry send to ${row.lead_email}`}
+          >
+            <RefreshCw className={`size-3.5 mr-1 ${retrySingleMutation.isPending ? "animate-spin" : ""}`} />
+            Retry
+          </Button>
+        ) : null,
+    },
+  ];
+
   return (
-    <div className="space-y-8">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <Button asChild variant="ghost" size="sm" className="-ml-2">
-            <Link to="/">
-              <ArrowLeft className="size-4" /> Dashboard
-            </Link>
-          </Button>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight">{campaign.subject}</h1>
-          <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-            <Badge
-              variant={
-                campaign.status === "sent"
-                  ? "default"
-                  : isProcessing
-                    ? "secondary"
-                    : isScheduled
-                      ? "outline"
-                      : "outline"
-              }
-              className={
-                isScheduled
-                  ? "bg-purple-500/10 text-purple-700 border-purple-500/30 font-semibold"
-                  : campaign.status === "cancelled"
-                    ? "bg-destructive/10 text-destructive border-destructive/30"
-                    : ""
-              }
-            >
-              {isScheduled ? "Scheduled" : campaign.status}
-            </Badge>
-            {campaign.sent_at && (
-              <span>Completed {new Date(campaign.sent_at).toLocaleString()}</span>
-            )}
-            {campaign.scheduled_for && isScheduled && (
-              <span className="text-purple-600 font-medium">
-                Scheduled for {new Date(campaign.scheduled_for).toLocaleString()}
-              </span>
-            )}
-            {failed > 0 && (
-              <span className="flex items-center gap-1 text-destructive text-xs font-medium">
-                <AlertCircle className="size-3.5" /> {failed} send{failed === 1 ? "" : "s"} failed
-              </span>
-            )}
-          </div>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          {!senderVerified && (
-            <div className="w-full rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700">
-              No verified sender address is configured, so sending is disabled.{" "}
-              <Link to="/settings" className="font-medium underline underline-offset-2">
-                Add it in Settings
-              </Link>
-              .
-            </div>
-          )}
-          <CheckSendingOptionDialog campaignId={campaign.id} />
-          <SendTestEmailDialog
-            campaignId={campaign.id}
-            campaignSubject={campaign.subject}
-            senderVerified={senderVerified}
-          />
-
-          <Button asChild variant="outline">
-            <Link to="/campaigns/new" search={{ clone: campaign.id }}>
-              <Copy className="size-4" /> Duplicate campaign
-            </Link>
-          </Button>
-
-          {campaign.status === "sent" && (
-            <Button asChild variant="outline" className="border-purple-500/40 text-purple-700 dark:text-purple-300 hover:bg-purple-500/10">
-              <Link to="/campaigns/new" search={{ clone: campaign.id }}>
-                <Clock className="size-4 mr-1 text-purple-500" /> Follow-up / Resend
-              </Link>
-            </Button>
-          )}
-
-          {isProcessing && (
-            <Button
-              type="button"
-              variant="destructive"
-              onClick={() => stopSendingMutation.mutate()}
-              disabled={stopSendingMutation.isPending}
-            >
-              <OctagonX className="size-4 mr-1" /> Stop Sending
-            </Button>
-          )}
-
-          {campaign.status === "cancelled" && (
-            <Button
-              type="button"
-              variant="default"
-              className="bg-emerald-600 hover:bg-emerald-700"
-              onClick={() => resumeSendingMutation.mutate()}
-              disabled={resumeSendingMutation.isPending}
-            >
-              <Play className="size-4 mr-1" /> Resume Sending
-            </Button>
-          )}
-
-          {failed > 0 && (
-            <CampaignErrorLogsDialog
+    <div className="space-y-6">
+      <PageHeader
+        title={campaign.subject}
+        description={
+          isScheduled && campaign.scheduled_for
+            ? `Scheduled for ${new Date(campaign.scheduled_for).toLocaleString()}`
+            : campaign.sent_at
+              ? `Completed on ${new Date(campaign.sent_at).toLocaleString()}`
+              : "Campaign performance and recipient delivery log."
+        }
+        badge={{
+          label: isScheduled ? "Scheduled" : campaign.status,
+          variant: campaign.status === "sent" ? "success" : isScheduled ? "info" : "outline",
+        }}
+        backLink={{ to: "/", label: "Back to Dashboard" }}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <CheckSendingOptionDialog campaignId={campaign.id} />
+            <SendTestEmailDialog
               campaignId={campaign.id}
               campaignSubject={campaign.subject}
-              failedSends={rows.filter((s) => s.status === "failed")}
+              senderVerified={senderVerified}
             />
-          )}
 
-          {failed > 0 && !isProcessing && (
-            <Button
-              type="button"
-              variant="outline"
-              className="border-destructive/30 text-destructive hover:bg-destructive/10"
-              onClick={() => retryAllMutation.mutate()}
-              disabled={retryAllMutation.isPending}
-            >
-              <RefreshCw className={`size-4 ${retryAllMutation.isPending ? "animate-spin" : ""}`} />
-              Retry all failed ({failed})
+            <Button asChild variant="outline" size="sm" className="h-9 text-xs" aria-label="Duplicate campaign">
+              <Link to="/campaigns/new" search={{ clone: campaign.id }}>
+                <Copy className="size-3.5 mr-1.5" /> Duplicate
+              </Link>
             </Button>
-          )}
-        </div>
+
+            {isProcessing && (
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                onClick={() => stopSendingMutation.mutate()}
+                disabled={stopSendingMutation.isPending}
+                className="h-9 text-xs"
+                aria-label="Stop sending campaign"
+              >
+                <OctagonX className="size-3.5 mr-1.5" /> Stop Sending
+              </Button>
+            )}
+
+            {failed > 0 && !isProcessing && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-9 text-xs text-destructive border-destructive/30 hover:bg-destructive/10"
+                onClick={() => retryAllMutation.mutate()}
+                disabled={retryAllMutation.isPending}
+                aria-label="Retry all failed sends"
+              >
+                <RefreshCw className={`size-3.5 mr-1.5 ${retryAllMutation.isPending ? "animate-spin" : ""}`} />
+                Retry Failed ({failed})
+              </Button>
+            )}
+          </div>
+        }
+      />
+
+      {/* Top Stat Cards Row */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          icon={Mail}
+          title="Delivered"
+          value={delivered}
+          change={{ value: `${rows.length} total`, trend: "neutral" }}
+        />
+        <StatCard
+          icon={Eye}
+          title="Opens"
+          value={openedCount}
+          change={{ value: delivered ? `${Math.round((openedCount / delivered) * 100)}%` : "0%", trend: "up" }}
+        />
+        <StatCard
+          icon={MousePointerClick}
+          title="Clicks"
+          value={clickedCount}
+          change={{ value: delivered ? `${Math.round((clickedCount / delivered) * 100)}%` : "0%", trend: "up" }}
+        />
+        <StatCard
+          icon={AlertCircle}
+          title="Failed / Bounces"
+          value={failed}
+          change={{ value: failed ? "Requires retry" : "Zero errors", trend: failed ? "down" : "neutral" }}
+        />
       </div>
 
       {isScheduled && (
-        <Card className="space-y-4 p-5 border-purple-500/30 bg-purple-500/5">
+        <div className="glass-panel rounded-xl p-5 border border-info/40 bg-info/5 space-y-3 shadow-xs">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="space-y-1">
-              <h2 className="font-semibold text-purple-900 flex items-center gap-2">
-                <Calendar className="size-5 text-purple-600" />
-                Scheduled Send Queue
+              <h2 className="font-bold text-sm text-foreground flex items-center gap-2 font-heading">
+                <Calendar className="size-4.5 text-info" /> Scheduled Send Queue
               </h2>
-              <p className="text-sm text-purple-700">
-                This campaign is scheduled to be automatically delivered on{" "}
-                <strong>{new Date(campaign.scheduled_for!).toLocaleString()}</strong> to{" "}
+              <p className="text-xs text-muted-foreground">
+                This campaign is scheduled for automatic delivery on{" "}
+                <strong className="text-foreground">{new Date(campaign.scheduled_for!).toLocaleString()}</strong> to{" "}
                 {campaign.recipient_count} recipients.
               </p>
             </div>
@@ -327,7 +376,7 @@ function CampaignDetail() {
               <Button
                 size="sm"
                 variant="outline"
-                className="border-purple-300 text-purple-800 hover:bg-purple-100"
+                className="h-8 text-xs font-semibold"
                 onClick={() => {
                   if (campaign.scheduled_for) {
                     setNewScheduleTime(new Date(campaign.scheduled_for).toISOString().slice(0, 16));
@@ -340,7 +389,7 @@ function CampaignDetail() {
               <Button
                 size="sm"
                 variant="outline"
-                className="border-purple-300 text-purple-800 hover:bg-purple-100"
+                className="h-8 text-xs font-semibold"
                 onClick={() => sendNowMutation.mutate()}
                 disabled={sendNowMutation.isPending || !senderVerified}
               >
@@ -349,7 +398,7 @@ function CampaignDetail() {
               <Button
                 size="sm"
                 variant="outline"
-                className="border-destructive/30 text-destructive hover:bg-destructive/10"
+                className="h-8 text-xs font-semibold text-destructive hover:bg-destructive/10"
                 onClick={() => cancelScheduleMutation.mutate()}
                 disabled={cancelScheduleMutation.isPending}
               >
@@ -357,24 +406,23 @@ function CampaignDetail() {
               </Button>
             </div>
           </div>
-        </Card>
+        </div>
       )}
 
       {/* Reschedule Dialog */}
       <Dialog open={isRescheduleOpen} onOpenChange={setIsRescheduleOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md bg-card border-border">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Clock className="size-5 text-purple-600" />
-              Reschedule Campaign
+            <DialogTitle className="flex items-center gap-2 text-base font-bold">
+              <Clock className="size-4.5 text-primary" /> Reschedule Campaign
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-xs text-muted-foreground">
               Select a new date and time for this campaign to automatically send.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label htmlFor="rescheduleTime" className="text-xs font-medium">
+            <div className="space-y-1.5">
+              <Label htmlFor="rescheduleTime" className="text-xs font-semibold">
                 New Send Date & Time (IST)
               </Label>
               <Input
@@ -382,13 +430,15 @@ function CampaignDetail() {
                 type="datetime-local"
                 value={newScheduleTime}
                 onChange={(e) => setNewScheduleTime(e.target.value)}
+                className="h-10 text-sm"
               />
             </div>
             <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={() => setIsRescheduleOpen(false)}>
+              <Button variant="outline" size="sm" onClick={() => setIsRescheduleOpen(false)}>
                 Cancel
               </Button>
               <Button
+                size="sm"
                 disabled={rescheduleMutation.isPending || !newScheduleTime}
                 onClick={() => rescheduleMutation.mutate()}
               >
@@ -399,121 +449,45 @@ function CampaignDetail() {
         </DialogContent>
       </Dialog>
 
-      <Card className="p-5">
-        <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-muted-foreground">
-          Preview
+      {/* Email Body Preview */}
+      <div className="glass-panel rounded-xl p-5 border border-border/80 space-y-3 shadow-xs">
+        <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+          Campaign Body Preview
         </h2>
         <div
-          className="prose-editor text-sm leading-relaxed"
+          className="prose-editor text-sm leading-relaxed rounded-lg border border-border/60 bg-card p-4"
           dangerouslySetInnerHTML={{ __html: campaign.body_html }}
         />
-      </Card>
+      </div>
 
       {isProcessing && (
-        <Card className="space-y-3 p-5 border-primary/20 bg-muted/20" aria-live="polite">
+        <div className="glass-panel rounded-xl p-5 border border-primary/30 bg-primary/5 space-y-3 shadow-xs" aria-live="polite">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <div>
-              <h2 className="font-medium flex items-center gap-2">
-                <RefreshCw className="size-4 animate-spin text-primary" />
-                Delivery queue processing
+              <h2 className="font-bold text-sm text-foreground flex items-center gap-2">
+                <RefreshCw className="size-4 animate-spin text-primary" /> Delivery Queue Processing
               </h2>
-              <p className="mt-1 text-sm text-muted-foreground">
+              <p className="mt-1 text-xs text-muted-foreground">
                 {rows.length === 0
                   ? "Preparing recipient queue…"
                   : `${completed} of ${rows.length} processed · ${delivered} sent · ${sending + queued} pending${failed ? ` · ${failed} failed` : ""}`}
               </p>
             </div>
-            <span className="text-sm font-medium tabular-nums">{progress}%</span>
+            <span className="text-sm font-bold text-primary tabular-nums">{progress}%</span>
           </div>
           <Progress value={progress} aria-label={`Campaign send progress: ${progress}%`} />
-          <p className="text-xs text-muted-foreground">
-            This view refreshes automatically while delivery runs in the background queue.
-          </p>
-        </Card>
+        </div>
       )}
 
-      <Card className="overflow-hidden p-0">
-        <table className="w-full text-sm">
-          <thead className="border-b border-border bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
-            <tr>
-              <th className="px-5 py-3 font-medium">Recipient</th>
-              <th className="px-5 py-3 font-medium">Delivery</th>
-              <th className="px-5 py-3 font-medium">Sent</th>
-              <th className="px-5 py-3 font-medium">Opened</th>
-              <th className="px-5 py-3 font-medium">Clicked</th>
-              <th className="px-5 py-3 font-medium">Failure reason</th>
-              <th className="px-5 py-3 font-medium text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 && (
-              <tr>
-                <td colSpan={7} className="px-5 py-10 text-center text-muted-foreground">
-                  Nothing sent yet.
-                </td>
-              </tr>
-            )}
-            {rows.map((send) => (
-              <tr key={send.id} className="border-b border-border last:border-0">
-                <td className="px-5 py-3 font-medium">
-                  {leadById.get(send.lead_id)?.email ?? "Unknown"}
-                </td>
-                <td className="px-5 py-3">
-                  <SendStatusBadge send={send} />
-                </td>
-                <td className="px-5 py-3 text-muted-foreground">
-                  {send.sent_at ? new Date(send.sent_at).toLocaleString() : "—"}
-                </td>
-                <td className="px-5 py-3 text-muted-foreground">
-                  {send.opened_at ? new Date(send.opened_at).toLocaleString() : "—"}
-                </td>
-                <td className="px-5 py-3 text-muted-foreground">
-                  {send.clicked_at ? new Date(send.clicked_at).toLocaleString() : "—"}
-                </td>
-                <td className="max-w-64 px-5 py-3 text-muted-foreground font-mono text-xs">
-                  {send.failure_reason ?? "—"}
-                </td>
-                <td className="px-5 py-3 text-right">
-                  {send.status === "failed" && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-8 text-xs"
-                      onClick={() => retrySingleMutation.mutate(send.id)}
-                      disabled={retrySingleMutation.isPending}
-                    >
-                      <RefreshCw
-                        className={`size-3.5 ${retrySingleMutation.isPending ? "animate-spin" : ""}`}
-                      />
-                      Retry
-                    </Button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Card>
+      {/* Recipient Deliveries Table */}
+      <DataTable
+        data={sendTableData}
+        columns={columns}
+        keyExtractor={(item) => item.id}
+        searchPlaceholder="Search recipient email..."
+        emptyTitle="No Recipient Deliveries Recorded"
+        emptyDescription="This campaign has not queued any recipient sends yet."
+      />
     </div>
   );
-}
-
-function SendStatusBadge({ send }: { send: Send }) {
-  if (send.status === "failed")
-    return <Badge variant="destructive">Failed (Attempt {send.attempt_count})</Badge>;
-  if (send.status === "sending")
-    return <Badge variant="secondary">Sending (Attempt {send.attempt_count})</Badge>;
-  if (send.status === "skipped")
-    return (
-      <Badge variant="outline" className="text-muted-foreground">
-        Skipped
-      </Badge>
-    );
-  if (send.status === "sent")
-    return (
-      <Badge className="bg-emerald-600 hover:bg-emerald-700">
-        <CheckCircle2 className="size-3 mr-1 inline" /> Sent
-      </Badge>
-    );
-  return <Badge variant="outline">Queued</Badge>;
 }

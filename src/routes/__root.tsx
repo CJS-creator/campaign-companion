@@ -245,6 +245,7 @@ function RootComponent() {
                         type="button"
                         onClick={handleSignOut}
                         title="Sign out"
+                        aria-label="Sign out"
                         className="flex size-7 items-center justify-center rounded-full bg-background text-muted-foreground transition-colors hover:text-destructive hover:bg-destructive/10 border border-border/40"
                       >
                         <LogOut className="size-3.5" />
@@ -263,7 +264,7 @@ function RootComponent() {
                   <div className="md:hidden">
                     <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
                       <SheetTrigger asChild>
-                        <Button variant="outline" size="icon" className="size-8">
+                        <Button variant="outline" size="icon" className="size-8" aria-label="Toggle navigation menu">
                           <Menu className="size-4" />
                           <span className="sr-only">Toggle menu</span>
                         </Button>
