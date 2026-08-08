@@ -11,9 +11,31 @@ export function extractEmail(value: string): string {
 
 const EMAIL_RE = /^[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+$/;
 
+/** Mailbox providers that can never be verified as a sending domain. */
+export const FREE_MAILBOX_DOMAINS = [
+  "gmail.com",
+  "googlemail.com",
+  "yahoo.com",
+  "yahoo.co.in",
+  "outlook.com",
+  "hotmail.com",
+  "live.com",
+  "msn.com",
+  "aol.com",
+  "icloud.com",
+  "me.com",
+  "proton.me",
+  "protonmail.com",
+  "zoho.com",
+  "gmx.com",
+  "mail.com",
+  "yandex.com",
+  "rediffmail.com",
+];
+
 export interface SenderValidationResult {
   isValid: boolean;
-  reason: "missing" | "invalid_format" | "resend_dev_disallowed" | "valid";
+  reason: "missing" | "invalid_format" | "resend_dev_disallowed" | "free_mailbox" | "valid";
   message: string;
   email: string;
   domain: string;
@@ -63,6 +85,17 @@ export function validateSenderAddress(
       domain,
     };
   }
+
+  if (FREE_MAILBOX_DOMAINS.includes(domain)) {
+    return {
+      isValid: false,
+      reason: "free_mailbox",
+      message: `You can't send campaigns from a ${domain} address — public mailbox domains can never be verified as a sending domain. Use an address on a domain you own and have verified (e.g. campaigns@notify.designforge.me).`,
+      email,
+      domain,
+    };
+  }
+
 
   return {
     isValid: true,
