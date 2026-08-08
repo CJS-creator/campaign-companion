@@ -104,7 +104,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     ],
   }),
   beforeLoad: async ({ location }) => {
+    if (location.pathname.startsWith("/lovable/")) return;
     if (location.pathname.startsWith("/login") || location.pathname.startsWith("/track")) return;
+
     const { authenticated } = await getSessionStatus();
     if (!authenticated) throw redirect({ to: "/login" });
   },
