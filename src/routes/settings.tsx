@@ -298,17 +298,39 @@ function SettingsPage() {
             </Button>
           </div>
 
-          <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3.5 text-xs flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300">
-              <ShieldCheck className="size-4 text-emerald-600 shrink-0" />
-              <span>
-                Sending Domain Target: <strong className="font-mono text-xs">{targetDomain}</strong>
-              </span>
-            </div>
-            <Badge className="bg-emerald-600 text-white text-[10px]">
-              <CheckCircle2 className="size-3 mr-1 inline" /> Domain Status: Active & Verified
-            </Badge>
-          </div>
+          {(() => {
+            const domainStatus = dnsData?.domainStatus ?? "unknown";
+            const ok = domainStatus === "verified";
+            return (
+              <div
+                className={`rounded-lg border p-3.5 text-xs flex flex-wrap items-center justify-between gap-3 ${
+                  ok
+                    ? "border-emerald-500/30 bg-emerald-500/5"
+                    : "border-amber-500/30 bg-amber-500/5"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <ShieldCheck
+                    className={`size-4 shrink-0 ${ok ? "text-emerald-600" : "text-amber-600"}`}
+                  />
+                  <span>
+                    {dnsData?.message ?? "Checking domain status…"}
+                  </span>
+                </div>
+                <Badge
+                  className={`text-[10px] text-white ${ok ? "bg-emerald-600" : "bg-amber-600"}`}
+                >
+                  Domain status: {domainStatus}
+                </Badge>
+              </div>
+            );
+          })()}
+
+          {records.length === 0 && (
+            <p className="text-xs text-muted-foreground">
+              No DNS records to display yet for {targetDomain}.
+            </p>
+          )}
 
           <div className="space-y-3">
             {records.map((rec) => (
@@ -324,13 +346,20 @@ function SettingsPage() {
                     className={
                       rec.status === "verified"
                         ? "bg-emerald-600 text-white text-[10px]"
-                        : "bg-sky-600 text-white text-[10px]"
+                        : rec.status === "failed"
+                          ? "bg-destructive text-white text-[10px]"
+                          : rec.status === "recommended"
+                            ? "bg-sky-600 text-white text-[10px]"
+                            : "bg-amber-600 text-white text-[10px]"
                     }
                   >
-                    <CheckCircle2 className="size-3 mr-1 inline" />
-                    {rec.status === "verified" ? "Verified" : "Recommended"}
+                    {rec.status === "verified" ? (
+                      <CheckCircle2 className="size-3 mr-1 inline" />
+                    ) : null}
+                    {rec.status.replace("_", " ")}
                   </Badge>
                 </div>
+
 
                 <div className="grid gap-2 sm:grid-cols-2 text-xs">
                   <div className="space-y-1">
