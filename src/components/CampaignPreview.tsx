@@ -12,11 +12,12 @@ interface CampaignPreviewProps {
 export function CampaignPreview({ subject, offerUrl, bodyHtml }: CampaignPreviewProps) {
   const [device, setDevice] = useState<"desktop" | "mobile">("desktop");
 
-  let renderedHtml = bodyHtml || "<p style='color: #888;'>Start typing body text to see preview...</p>";
+  let renderedHtml =
+    bodyHtml || "<p style='color: #888;'>Start typing body text to see preview...</p>";
   renderedHtml = renderedHtml.replaceAll("{{name}}", "Jane");
   renderedHtml = renderedHtml.replaceAll(
     "{{offer_link}}",
-    `<a href="${offerUrl || '#'}" target="_blank" style="color: #2563eb; text-decoration: underline;">${offerUrl || "https://example.com/offer"}</a>`
+    `<a href="${offerUrl || "#"}" target="_blank" style="color: #2563eb; text-decoration: underline;">${offerUrl || "https://example.com/offer"}</a>`,
   );
 
   return (
@@ -54,7 +55,9 @@ export function CampaignPreview({ subject, offerUrl, bodyHtml }: CampaignPreview
       >
         <div className="bg-muted/40 border-b border-border px-4 py-3 text-xs space-y-1">
           <div className="flex justify-between text-muted-foreground">
-            <span><strong>From:</strong> your verified sender address</span>
+            <span>
+              <strong>From:</strong> your verified sender address
+            </span>
             <span>Today</span>
           </div>
           <div className="text-muted-foreground">
@@ -66,10 +69,7 @@ export function CampaignPreview({ subject, offerUrl, bodyHtml }: CampaignPreview
         </div>
 
         <div className="p-5 text-sm leading-relaxed min-h-36">
-          <div
-            className="prose-editor"
-            dangerouslySetInnerHTML={{ __html: renderedHtml }}
-          />
+          <div className="prose-editor" dangerouslySetInnerHTML={{ __html: renderedHtml }} />
         </div>
       </div>
     </Card>

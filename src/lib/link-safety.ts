@@ -2,7 +2,8 @@ import { createHmac } from "node:crypto";
 
 export type LinkIssue = { level: "error" | "warning"; message: string };
 
-const PRIVATE_HOST = /^(localhost|127\.|0\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|\[?::1\]?)/i;
+const PRIVATE_HOST =
+  /^(localhost|127\.|0\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|\[?::1\]?)/i;
 const SHORTENERS = [
   "bit.ly",
   "tinyurl.com",
@@ -89,4 +90,3 @@ export function inspectUrl(raw: string): { url: URL | null; issues: LinkIssue[] 
 export function hasBlockingIssue(issues: LinkIssue[]) {
   return issues.some((i) => i.level === "error");
 }
-

@@ -38,7 +38,8 @@ export const Route = createFileRoute("/analytics")({
       { title: "Performance Analytics — Postmark Studio" },
       {
         name: "description",
-        content: "Deep visual analytics for email opens, clicks, top performing links, and campaign comparisons.",
+        content:
+          "Deep visual analytics for email opens, clicks, top performing links, and campaign comparisons.",
       },
     ],
   }),
@@ -51,7 +52,11 @@ function AnalyticsPage() {
 
   const { data: campaigns = [] } = useQuery(campaignsQuery);
 
-  const { data: analytics, isLoading, isFetching } = useQuery({
+  const {
+    data: analytics,
+    isLoading,
+    isFetching,
+  } = useQuery({
     queryKey: ["analytics", timeframe, selectedCampaignId],
     queryFn: () =>
       fetchAnalyticsData({
@@ -67,7 +72,12 @@ function AnalyticsPage() {
     const escape = (val: string) => `"${val.replaceAll('"', '""')}"`;
     const rows = [
       ["Date", "Emails Delivered", "Unique Opens", "Tracked Clicks"],
-      ...analytics.timeSeries.map((t) => [t.date, String(t.sent), String(t.opens), String(t.clicks)]),
+      ...analytics.timeSeries.map((t) => [
+        t.date,
+        String(t.sent),
+        String(t.opens),
+        String(t.clicks),
+      ]),
     ];
     const csv = rows.map((r) => r.map((c) => escape(c)).join(",")).join("\r\n");
     const url = URL.createObjectURL(new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" }));
@@ -152,7 +162,9 @@ function AnalyticsPage() {
             <Mail className="size-4 text-blue-500" />
           </div>
           <div className="text-3xl font-bold tabular-nums">{analytics?.totalSent ?? 0}</div>
-          <p className="text-xs text-muted-foreground">{isFetching ? "Updating…" : "Total successfully delivered"}</p>
+          <p className="text-xs text-muted-foreground">
+            {isFetching ? "Updating…" : "Total successfully delivered"}
+          </p>
         </Card>
 
         <Card className="p-5 space-y-1">
@@ -210,7 +222,10 @@ function AnalyticsPage() {
         <div className="h-72 w-full pt-2">
           {analytics?.timeSeries && analytics.timeSeries.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={analytics.timeSeries} margin={{ top: 10, right: 20, left: -20, bottom: 0 }}>
+              <LineChart
+                data={analytics.timeSeries}
+                margin={{ top: 10, right: 20, left: -20, bottom: 0 }}
+              >
                 <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
                 <XAxis dataKey="displayDate" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} />
@@ -275,7 +290,10 @@ function AnalyticsPage() {
         <div className="h-64 w-full pt-2">
           {analytics?.campaignComparison && analytics.campaignComparison.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={analytics.campaignComparison} margin={{ top: 10, right: 20, left: -20, bottom: 0 }}>
+              <BarChart
+                data={analytics.campaignComparison}
+                margin={{ top: 10, right: 20, left: -20, bottom: 0 }}
+              >
                 <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
                 <XAxis dataKey="subject" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} unit="%" />
@@ -344,9 +362,15 @@ function AnalyticsPage() {
                         <ExternalLink className="size-3 shrink-0" />
                       </a>
                     </td>
-                    <td className="p-3 text-muted-foreground font-medium">{link.campaignSubject}</td>
-                    <td className="p-3 text-right font-bold text-amber-600 tabular-nums">{link.totalClicks}</td>
-                    <td className="p-3 text-right font-semibold text-foreground tabular-nums">{link.uniqueLeads}</td>
+                    <td className="p-3 text-muted-foreground font-medium">
+                      {link.campaignSubject}
+                    </td>
+                    <td className="p-3 text-right font-bold text-amber-600 tabular-nums">
+                      {link.totalClicks}
+                    </td>
+                    <td className="p-3 text-right font-semibold text-foreground tabular-nums">
+                      {link.uniqueLeads}
+                    </td>
                   </tr>
                 ))
               )}

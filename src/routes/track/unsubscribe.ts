@@ -60,7 +60,7 @@ export const Route = createFileRoute("/track/unsubscribe")({
           {
             status: 200,
             headers: { "Content-Type": "text/html; charset=utf-8" },
-          }
+          },
         );
       },
       POST: async ({ request }) => {

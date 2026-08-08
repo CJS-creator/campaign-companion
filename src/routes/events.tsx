@@ -18,7 +18,8 @@ export const Route = createFileRoute("/events")({
       { title: "Events & Audit — Postmark Studio" },
       {
         name: "description",
-        content: "Filter delivery, open, click, bounce and complaint events per send, and export the audit trail.",
+        content:
+          "Filter delivery, open, click, bounce and complaint events per send, and export the audit trail.",
       },
       { property: "og:title", content: "Events & Audit — Postmark Studio" },
       {
@@ -65,7 +66,9 @@ function EventsPage() {
   });
 
   const toggleType = (type: string) =>
-    setTypes((current) => (current.includes(type) ? current.filter((t) => t !== type) : [...current, type]));
+    setTypes((current) =>
+      current.includes(type) ? current.filter((t) => t !== type) : [...current, type],
+    );
 
   const resetFilters = () => {
     setTypes([]);
@@ -164,7 +167,12 @@ function EventsPage() {
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="event-from">From</Label>
-            <Input id="event-from" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+            <Input
+              id="event-from"
+              type="date"
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+            />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="event-to">To</Label>
@@ -173,7 +181,9 @@ function EventsPage() {
         </div>
 
         <div className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
-          <span>{isLoading ? "Loading…" : `${events.length} event${events.length === 1 ? "" : "s"}`}</span>
+          <span>
+            {isLoading ? "Loading…" : `${events.length} event${events.length === 1 ? "" : "s"}`}
+          </span>
           <Button type="button" variant="ghost" size="sm" onClick={resetFilters}>
             Reset filters
           </Button>
@@ -222,7 +232,9 @@ function EventsPage() {
                     </span>
                   </td>
                   <td className="px-5 py-3 font-medium">{event.lead_email ?? "—"}</td>
-                  <td className="px-5 py-3 text-muted-foreground">{event.campaign_subject ?? "—"}</td>
+                  <td className="px-5 py-3 text-muted-foreground">
+                    {event.campaign_subject ?? "—"}
+                  </td>
                   <td className="px-5 py-3 text-muted-foreground">{event.reason ?? "—"}</td>
                 </tr>
               ))}
@@ -242,7 +254,9 @@ function EventsPage() {
             {auditLogs.map((log) => (
               <li key={log.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
                 <span className="font-medium">{log.action.replaceAll("_", " ")}</span>
-                <span className="text-xs text-muted-foreground">{new Date(log.created_at).toLocaleString()}</span>
+                <span className="text-xs text-muted-foreground">
+                  {new Date(log.created_at).toLocaleString()}
+                </span>
               </li>
             ))}
           </ul>

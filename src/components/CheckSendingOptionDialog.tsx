@@ -2,8 +2,22 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { Wrench, RefreshCw, AlertCircle, CheckCircle2, Mail, ShieldAlert, Zap, Play, OctagonX } from "lucide-react";
-import { checkAndRepairQueue, retryFailedSends, stopCampaignSending } from "@/lib/campaigns.functions";
+import {
+  Wrench,
+  RefreshCw,
+  AlertCircle,
+  CheckCircle2,
+  Mail,
+  ShieldAlert,
+  Zap,
+  Play,
+  OctagonX,
+} from "lucide-react";
+import {
+  checkAndRepairQueue,
+  retryFailedSends,
+  stopCampaignSending,
+} from "@/lib/campaigns.functions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -131,7 +145,8 @@ export function CheckSendingOptionDialog({ campaignId, trigger }: CheckSendingOp
                   <div>
                     <span className="font-semibold text-destructive">RESEND_API_KEY Missing!</span>
                     <p className="mt-0.5 text-muted-foreground">
-                      Emails will remain in queued status because the Resend API key environment variable is not configured.
+                      Emails will remain in queued status because the Resend API key environment
+                      variable is not configured.
                     </p>
                   </div>
                 </div>
@@ -144,7 +159,8 @@ export function CheckSendingOptionDialog({ campaignId, trigger }: CheckSendingOp
                   <div>
                     <span className="font-semibold text-emerald-700">Queue Loop Repaired!</span>
                     <p className="mt-0.5 text-emerald-800">
-                      Found {report.resetStuckCount} send(s) locked in sending status. Automatically reset them to queued and restarted the delivery worker.
+                      Found {report.resetStuckCount} send(s) locked in sending status. Automatically
+                      reset them to queued and restarted the delivery worker.
                     </p>
                   </div>
                 </div>
@@ -196,7 +212,9 @@ export function CheckSendingOptionDialog({ campaignId, trigger }: CheckSendingOp
                   disabled={checkMutation.isPending}
                   onClick={() => checkMutation.mutate()}
                 >
-                  <RefreshCw className={`size-4 mr-1.5 ${checkMutation.isPending ? "animate-spin" : ""}`} />
+                  <RefreshCw
+                    className={`size-4 mr-1.5 ${checkMutation.isPending ? "animate-spin" : ""}`}
+                  />
                   Repair & Restart Worker
                 </Button>
 

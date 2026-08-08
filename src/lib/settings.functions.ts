@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { isVerifiedSenderAddress } from "./sender";
+import { isVerifiedSenderAddress, validateSenderAddress } from "./sender";
 
 export interface OwnerSettings {
   id: string;
@@ -30,8 +30,12 @@ const updateSettingsInput = z.object({
     .trim()
     .max(255)
     .refine(
-      (value) => value === "" || isVerifiedSenderAddress(value),
-      "Enter a valid sender address on your verified domain (shared resend.dev addresses are not allowed)",
+      (value) => value === "" || validateSenderAddress(value).isValid,
+      (value) => ({
+        message:
+          validateSenderAddress(value).message ||
+          "Enter a valid sender address on your verified domain (shared @resend.dev is not allowed).",
+      }),
     ),
   daily_cap: z.number().int().min(1).max(100000),
   monthly_cap: z.number().int().min(1).max(1000000),
@@ -63,22 +67,33 @@ export const defaultSettings: OwnerSettings = {
   updated_at: new Date().toISOString(),
 };
 
-export const getSettings = createServerFn({ method: "GET" }).handler(async (): Promise<OwnerSettings> => {
-  const { assertOwner } = await import("./owner-guard.server");
-  assertOwner();
-  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-  const { data } = await supabaseAdmin.from("settings").select("*").eq("id", "default").maybeSingle();
-  if (!data) return defaultSettings;
-  return { ...defaultSettings, ...(data as Partial<OwnerSettings>) } as OwnerSettings;
-});
+export const getSettings = createServerFn({ method: "GET" }).handler(
+  async (): Promise<OwnerSettings> => {
+    const { assertOwner } = await import("./owner-guard.server");
+    assertOwner();
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data } = await supabaseAdmin
+      .from("settings")
+      .select("*")
+      .eq("id", "default")
+      .maybeSingle();
+    if (!data) return defaultSettings;
+    return { ...defaultSettings, ...(data as Partial<OwnerSettings>) } as OwnerSettings;
+  },
+);
 
 export const getSenderStatus = createServerFn({ method: "GET" }).handler(async () => {
   const { assertOwner } = await import("./owner-guard.server");
   assertOwner();
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-  const { data } = await supabaseAdmin.from("settings").select("from_address").eq("id", "default").maybeSingle();
+  const { data } = await supabaseAdmin
+    .from("settings")
+    .select("from_address, sender_domain")
+    .eq("id", "default")
+    .maybeSingle();
   const fromAddress = (data?.from_address ?? "").trim();
-  return { fromAddress, verified: isVerifiedSenderAddress(fromAddress) };
+  const validation = validateSenderAddress(fromAddress, data?.sender_domain);
+  return { fromAddress, verified: validation.isValid, validation };
 });
 
 export const getWebhookStatus = createServerFn({ method: "GET" }).handler(async () => {

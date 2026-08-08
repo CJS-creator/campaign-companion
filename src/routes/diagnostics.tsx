@@ -134,12 +134,16 @@ function DiagnosticsPage() {
             <span className="text-xl font-bold">
               {health?.openEndpoint.reachable ? "Reachable" : "Unreachable"}
             </span>
-            <Badge variant={health?.openEndpoint.reachable ? "outline" : "destructive"} className="text-xs">
+            <Badge
+              variant={health?.openEndpoint.reachable ? "outline" : "destructive"}
+              className="text-xs"
+            >
               HTTP {health?.openEndpoint.status ?? "ERR"}
             </Badge>
           </div>
           <p className="text-xs text-muted-foreground">
-            Latency: {health?.openEndpoint.responseTimeMs}ms · {health?.openEndpoint.contentType || "GIF pixel"}
+            Latency: {health?.openEndpoint.responseTimeMs}ms ·{" "}
+            {health?.openEndpoint.contentType || "GIF pixel"}
           </p>
         </Card>
 
@@ -152,7 +156,10 @@ function DiagnosticsPage() {
             <span className="text-xl font-bold">
               {health?.clickEndpoint.reachable ? "Reachable" : "Unreachable"}
             </span>
-            <Badge variant={health?.clickEndpoint.reachable ? "outline" : "destructive"} className="text-xs">
+            <Badge
+              variant={health?.clickEndpoint.reachable ? "outline" : "destructive"}
+              className="text-xs"
+            >
               HTTP {health?.clickEndpoint.status ?? "ERR"}
             </Badge>
           </div>
@@ -193,7 +200,9 @@ function DiagnosticsPage() {
             </Badge>
           </div>
           <p className="text-xs text-muted-foreground">
-            {metrics?.scheduledCount ? `${metrics.scheduledCount} scheduled campaign(s)` : "No pending scheduled sends"}
+            {metrics?.scheduledCount
+              ? `${metrics.scheduledCount} scheduled campaign(s)`
+              : "No pending scheduled sends"}
           </p>
         </Card>
       </div>
@@ -215,10 +224,12 @@ function DiagnosticsPage() {
               )}
             </div>
             <p className="text-muted-foreground">
-              Embeds transparent 1x1 GIF pixels into HTML campaign bodies. Records open events in real time.
+              Embeds transparent 1x1 GIF pixels into HTML campaign bodies. Records open events in
+              real time.
             </p>
             <div className="font-mono text-[11px] text-muted-foreground bg-background p-2 rounded border">
-              Response Time: {health?.openEndpoint.responseTimeMs}ms | Content-Type: {health?.openEndpoint.contentType}
+              Response Time: {health?.openEndpoint.responseTimeMs}ms | Content-Type:{" "}
+              {health?.openEndpoint.contentType}
             </div>
           </div>
 
@@ -232,10 +243,12 @@ function DiagnosticsPage() {
               )}
             </div>
             <p className="text-muted-foreground">
-              Wraps offer links with cryptographic token signatures. Updates click metrics & redirects recipient.
+              Wraps offer links with cryptographic token signatures. Updates click metrics &
+              redirects recipient.
             </p>
             <div className="font-mono text-[11px] text-muted-foreground bg-background p-2 rounded border">
-              Response Time: {health?.clickEndpoint.responseTimeMs}ms | Location: {health?.clickEndpoint.redirectUrl || "Origin URL"}
+              Response Time: {health?.clickEndpoint.responseTimeMs}ms | Location:{" "}
+              {health?.clickEndpoint.redirectUrl || "Origin URL"}
             </div>
           </div>
         </div>
@@ -250,7 +263,8 @@ function DiagnosticsPage() {
               Recent Client & Server Errors ({errors.length})
             </h2>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Captured out-of-band runtime exceptions, React boundary errors, and unhandled rejections.
+              Captured out-of-band runtime exceptions, React boundary errors, and unhandled
+              rejections.
             </p>
           </div>
           {errors.length > 0 && (
@@ -270,7 +284,8 @@ function DiagnosticsPage() {
             <CheckCircle2 className="size-8 text-emerald-500 mx-auto" />
             <p className="text-sm font-medium text-foreground">No recent errors captured!</p>
             <p className="text-xs max-w-sm mx-auto">
-              Client window exceptions and server errors will appear here automatically if triggered.
+              Client window exceptions and server errors will appear here automatically if
+              triggered.
             </p>
           </div>
         ) : (
@@ -300,7 +315,9 @@ function DiagnosticsPage() {
                           </Badge>
                         </td>
                         <td className="p-3 font-mono text-muted-foreground">{err.path || "/"}</td>
-                        <td className="p-3 font-medium text-destructive max-w-md truncate">{err.message}</td>
+                        <td className="p-3 font-medium text-destructive max-w-md truncate">
+                          {err.message}
+                        </td>
                         <td className="p-3 text-right">
                           <Button
                             variant="ghost"
@@ -308,7 +325,11 @@ function DiagnosticsPage() {
                             className="h-7 text-xs"
                             onClick={() => setExpandedErrorId(isExpanded ? null : err.id)}
                           >
-                            {isExpanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+                            {isExpanded ? (
+                              <ChevronUp className="size-3.5" />
+                            ) : (
+                              <ChevronDown className="size-3.5" />
+                            )}
                           </Button>
                         </td>
                       </tr>

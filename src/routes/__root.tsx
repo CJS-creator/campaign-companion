@@ -85,14 +85,12 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { title: "Postmark Studio — Email campaigns" },
       {
         name: "description",
-        content:
-          "Collect leads, compose campaigns and track opens and clicks in one simple tool.",
+        content: "Collect leads, compose campaigns and track opens and clicks in one simple tool.",
       },
       { property: "og:title", content: "Postmark Studio — Email campaigns" },
       {
         property: "og:description",
-        content:
-          "Collect leads, compose campaigns and track opens and clicks in one simple tool.",
+        content: "Collect leads, compose campaigns and track opens and clicks in one simple tool.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },

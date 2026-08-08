@@ -86,7 +86,9 @@ export const fetchAnalyticsData = createServerFn({ method: "GET" })
     if (sendsError) throw new Error(sendsError.message);
 
     // 2. Query Campaigns
-    let campaignsQuery = supabaseAdmin.from("campaigns").select("id, subject, created_at, offer_url");
+    let campaignsQuery = supabaseAdmin
+      .from("campaigns")
+      .select("id, subject, created_at, offer_url");
     if (data.campaignId) {
       campaignsQuery = campaignsQuery.eq("id", data.campaignId);
     }
@@ -181,7 +183,10 @@ export const fetchAnalyticsData = createServerFn({ method: "GET" })
     });
 
     // Build Top-Clicked Links analysis
-    const linkMap = new Map<string, { totalClicks: number; leads: Set<string>; campaignSubject: string }>();
+    const linkMap = new Map<
+      string,
+      { totalClicks: number; leads: Set<string>; campaignSubject: string }
+    >();
     (events ?? [])
       .filter((e) => e.event_type === "clicked")
       .forEach((e) => {

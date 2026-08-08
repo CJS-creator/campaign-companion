@@ -2,7 +2,12 @@ import { createServerFn } from "@tanstack/react-start";
 import { getRequestUrl } from "@tanstack/react-start/server";
 import { z } from "zod";
 import { runQueueWorker } from "./campaigns.functions";
-import { getCapturedErrorRecords, clearCapturedErrorRecords, addCapturedErrorRecord, type CapturedError } from "./error-capture";
+import {
+  getCapturedErrorRecords,
+  clearCapturedErrorRecords,
+  addCapturedErrorRecord,
+  type CapturedError,
+} from "./error-capture";
 
 export type HealthCheckResult = {
   timestamp: string;
@@ -44,135 +49,145 @@ export type DiagnosticsData = {
   };
 };
 
-export const runHealthCheck = createServerFn({ method: "POST" }).handler(async (): Promise<HealthCheckResult> => {
-  const { assertOwner } = await import("./owner-guard.server");
-  assertOwner();
+export const runHealthCheck = createServerFn({ method: "POST" }).handler(
+  async (): Promise<HealthCheckResult> => {
+    const { assertOwner } = await import("./owner-guard.server");
+    assertOwner();
 
-  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-  const { signSendToken } = await import("./link-safety");
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { signSendToken } = await import("./link-safety");
 
-  const reqUrl = getRequestUrl();
-  const origin = new URL(reqUrl).origin;
-  const timestamp = new Date().toISOString();
+    const reqUrl = getRequestUrl();
+    const origin = new URL(reqUrl).origin;
+    const timestamp = new Date().toISOString();
 
-  // 1. Trigger background queue worker to process any due scheduled campaigns
-  let workerExecuted = false;
-  let workerMessage = "Queue worker checked successfully";
-  try {
-    await runQueueWorker(undefined, origin);
-    workerExecuted = true;
-  } catch (err) {
-    workerMessage = err instanceof Error ? err.message : "Queue worker check failed";
-  }
-
-  // 2. Health probe against /track/open endpoint
-  const testSendId = "00000000-0000-4000-a000-000000000000";
-  const sig = signSendToken(testSendId);
-
-  const openStart = Date.now();
-  let openStatus: number | null = null;
-  let openContentType: string | null = null;
-  let openReachable = false;
-  try {
-    const openRes = await fetch(`${origin}/track/open?send_id=${testSendId}&sig=${sig}&health_check=1`, {
-      method: "GET",
-      headers: { "User-Agent": "CampaignCompanion-HealthCheckProbe/1.0" },
-    });
-    openStatus = openRes.status;
-    openContentType = openRes.headers.get("content-type");
-    openReachable = openRes.status === 200 && (openContentType?.includes("image") ?? false);
-  } catch (err) {
-    console.error("Health check open endpoint probe failed:", err);
-  }
-  const openTime = Date.now() - openStart;
-
-  // 3. Health probe against /track/click endpoint
-  const clickStart = Date.now();
-  let clickStatus: number | null = null;
-  let redirectUrl: string | null = null;
-  let clickReachable = false;
-  try {
-    const clickRes = await fetch(`${origin}/track/click?send_id=${testSendId}&sig=${sig}&health_check=1`, {
-      method: "GET",
-      redirect: "manual",
-      headers: { "User-Agent": "CampaignCompanion-HealthCheckProbe/1.0" },
-    });
-    clickStatus = clickRes.status;
-    redirectUrl = clickRes.headers.get("location");
-    // 302 redirect or 200 ok signifies click endpoint is responding
-    clickReachable = clickRes.status === 302 || clickRes.status === 200;
-  } catch (err) {
-    console.error("Health check click endpoint probe failed:", err);
-  }
-  const clickTime = Date.now() - clickStart;
-
-  // 4. Verify DB event recording capabilities by probing recent events table
-  let openEventRecorded = false;
-  let clickEventRecorded = false;
-  let dbWriteSuccess = false;
-  let eventMsg = "Database event recording verified";
-
-  try {
-    // Insert a probe test event to verify events table writes
-    const { data: insertedEvent, error: insertErr } = await supabaseAdmin
-      .from("events")
-      .insert({
-        event_type: "health_check",
-        reason: "Health check endpoint verification probe",
-        metadata: { probe: true, timestamp },
-      })
-      .select("id")
-      .maybeSingle();
-
-    if (insertErr) {
-      eventMsg = `DB insert error: ${insertErr.message}`;
-    } else if (insertedEvent) {
-      dbWriteSuccess = true;
+    // 1. Trigger background queue worker to process any due scheduled campaigns
+    let workerExecuted = false;
+    let workerMessage = "Queue worker checked successfully";
+    try {
+      await runQueueWorker(undefined, origin);
+      workerExecuted = true;
+    } catch (err) {
+      workerMessage = err instanceof Error ? err.message : "Queue worker check failed";
     }
 
-    // Check if open / click events exist in recent events table
-    const { data: recentEvents } = await supabaseAdmin
-      .from("events")
-      .select("event_type")
-      .order("created_at", { ascending: false })
-      .limit(50);
+    // 2. Health probe against /track/open endpoint
+    const testSendId = "00000000-0000-4000-a000-000000000000";
+    const sig = signSendToken(testSendId);
 
-    const types = (recentEvents ?? []).map((e) => e.event_type);
-    openEventRecorded = types.includes("opened") || types.includes("health_check") || dbWriteSuccess;
-    clickEventRecorded = types.includes("clicked") || types.includes("health_check") || dbWriteSuccess;
-  } catch (err) {
-    eventMsg = err instanceof Error ? err.message : "Database event query failed";
-  }
+    const openStart = Date.now();
+    let openStatus: number | null = null;
+    let openContentType: string | null = null;
+    let openReachable = false;
+    try {
+      const openRes = await fetch(
+        `${origin}/track/open?send_id=${testSendId}&sig=${sig}&health_check=1`,
+        {
+          method: "GET",
+          headers: { "User-Agent": "CampaignCompanion-HealthCheckProbe/1.0" },
+        },
+      );
+      openStatus = openRes.status;
+      openContentType = openRes.headers.get("content-type");
+      openReachable = openRes.status === 200 && (openContentType?.includes("image") ?? false);
+    } catch (err) {
+      console.error("Health check open endpoint probe failed:", err);
+    }
+    const openTime = Date.now() - openStart;
 
-  const overallHealthy = openReachable && clickReachable && dbWriteSuccess;
+    // 3. Health probe against /track/click endpoint
+    const clickStart = Date.now();
+    let clickStatus: number | null = null;
+    let redirectUrl: string | null = null;
+    let clickReachable = false;
+    try {
+      const clickRes = await fetch(
+        `${origin}/track/click?send_id=${testSendId}&sig=${sig}&health_check=1`,
+        {
+          method: "GET",
+          redirect: "manual",
+          headers: { "User-Agent": "CampaignCompanion-HealthCheckProbe/1.0" },
+        },
+      );
+      clickStatus = clickRes.status;
+      redirectUrl = clickRes.headers.get("location");
+      // 302 redirect or 200 ok signifies click endpoint is responding
+      clickReachable = clickRes.status === 302 || clickRes.status === 200;
+    } catch (err) {
+      console.error("Health check click endpoint probe failed:", err);
+    }
+    const clickTime = Date.now() - clickStart;
 
-  return {
-    timestamp,
-    healthy: overallHealthy,
-    openEndpoint: {
-      reachable: openReachable,
-      status: openStatus,
-      responseTimeMs: openTime,
-      contentType: openContentType,
-    },
-    clickEndpoint: {
-      reachable: clickReachable,
-      status: clickStatus,
-      responseTimeMs: clickTime,
-      redirectUrl,
-    },
-    eventsRecorded: {
-      success: dbWriteSuccess,
-      openEventRecorded,
-      clickEventRecorded,
-      message: eventMsg,
-    },
-    queueWorkerStatus: {
-      executed: workerExecuted,
-      message: workerMessage,
-    },
-  };
-});
+    // 4. Verify DB event recording capabilities by probing recent events table
+    let openEventRecorded = false;
+    let clickEventRecorded = false;
+    let dbWriteSuccess = false;
+    let eventMsg = "Database event recording verified";
+
+    try {
+      // Insert a probe test event to verify events table writes
+      const { data: insertedEvent, error: insertErr } = await supabaseAdmin
+        .from("events")
+        .insert({
+          event_type: "health_check",
+          reason: "Health check endpoint verification probe",
+          metadata: { probe: true, timestamp },
+        })
+        .select("id")
+        .maybeSingle();
+
+      if (insertErr) {
+        eventMsg = `DB insert error: ${insertErr.message}`;
+      } else if (insertedEvent) {
+        dbWriteSuccess = true;
+      }
+
+      // Check if open / click events exist in recent events table
+      const { data: recentEvents } = await supabaseAdmin
+        .from("events")
+        .select("event_type")
+        .order("created_at", { ascending: false })
+        .limit(50);
+
+      const types = (recentEvents ?? []).map((e) => e.event_type);
+      openEventRecorded =
+        types.includes("opened") || types.includes("health_check") || dbWriteSuccess;
+      clickEventRecorded =
+        types.includes("clicked") || types.includes("health_check") || dbWriteSuccess;
+    } catch (err) {
+      eventMsg = err instanceof Error ? err.message : "Database event query failed";
+    }
+
+    const overallHealthy = openReachable && clickReachable && dbWriteSuccess;
+
+    return {
+      timestamp,
+      healthy: overallHealthy,
+      openEndpoint: {
+        reachable: openReachable,
+        status: openStatus,
+        responseTimeMs: openTime,
+        contentType: openContentType,
+      },
+      clickEndpoint: {
+        reachable: clickReachable,
+        status: clickStatus,
+        responseTimeMs: clickTime,
+        redirectUrl,
+      },
+      eventsRecorded: {
+        success: dbWriteSuccess,
+        openEventRecorded,
+        clickEventRecorded,
+        message: eventMsg,
+      },
+      queueWorkerStatus: {
+        executed: workerExecuted,
+        message: workerMessage,
+      },
+    };
+  },
+);
 
 export const fetchDiagnosticsData = createServerFn({ method: "GET" }).handler(
   async (): Promise<DiagnosticsData> => {
@@ -236,7 +251,13 @@ export const logClientErrorServerFn = createServerFn({ method: "POST" })
         message: z.string(),
         stack: z.string().optional(),
         source: z
-          .enum(["client_window", "unhandled_rejection", "react_boundary", "server_error", "console"])
+          .enum([
+            "client_window",
+            "unhandled_rejection",
+            "react_boundary",
+            "server_error",
+            "console",
+          ])
           .default("react_boundary"),
         path: z.string().optional(),
       })
@@ -247,9 +268,11 @@ export const logClientErrorServerFn = createServerFn({ method: "POST" })
     return { logged: true };
   });
 
-export const clearDiagnosticsErrorsServerFn = createServerFn({ method: "POST" }).handler(async () => {
-  const { assertOwner } = await import("./owner-guard.server");
-  assertOwner();
-  clearCapturedErrorRecords();
-  return { cleared: true };
-});
+export const clearDiagnosticsErrorsServerFn = createServerFn({ method: "POST" }).handler(
+  async () => {
+    const { assertOwner } = await import("./owner-guard.server");
+    assertOwner();
+    clearCapturedErrorRecords();
+    return { cleared: true };
+  },
+);

@@ -1,7 +1,17 @@
 import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Download, Upload, Loader2, CheckCircle2, AlertTriangle, XCircle, FileSpreadsheet, ArrowRight, Eye } from "lucide-react";
+import {
+  Download,
+  Upload,
+  Loader2,
+  CheckCircle2,
+  AlertTriangle,
+  XCircle,
+  FileSpreadsheet,
+  ArrowRight,
+  Eye,
+} from "lucide-react";
 import { previewLeadImport, importLeads, type LeadImportPreviewResult } from "@/lib/app.functions";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -92,7 +102,9 @@ export function LeadImport() {
       const result = await importLeads({
         data: { rows: previewData.newLeads },
       });
-      toast.success(`Successfully imported ${result.added} new lead${result.added === 1 ? "" : "s"}!`);
+      toast.success(
+        `Successfully imported ${result.added} new lead${result.added === 1 ? "" : "s"}!`,
+      );
       qc.invalidateQueries({ queryKey: ["leads"] });
       setShowPreviewModal(false);
       setPreviewData(null);
@@ -103,7 +115,8 @@ export function LeadImport() {
     }
   };
 
-  const totalDuplicates = (previewData?.dbDuplicates.length || 0) + (previewData?.fileDuplicates.length || 0);
+  const totalDuplicates =
+    (previewData?.dbDuplicates.length || 0) + (previewData?.fileDuplicates.length || 0);
 
   return (
     <>
@@ -115,8 +128,10 @@ export function LeadImport() {
               Import leads from CSV / Excel
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Upload a file containing <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">email</code> and optional{" "}
-              <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">name</code> columns. You will preview duplicates before saving.
+              Upload a file containing{" "}
+              <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">email</code> and
+              optional <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">name</code>{" "}
+              columns. You will preview duplicates before saving.
             </p>
           </div>
           <div className="flex gap-2">
@@ -124,8 +139,17 @@ export function LeadImport() {
               <Download className="size-4 mr-1.5" />
               Template
             </Button>
-            <Button type="button" size="sm" disabled={busy} onClick={() => inputRef.current?.click()}>
-              {busy ? <Loader2 className="size-4 animate-spin mr-1.5" /> : <Upload className="size-4 mr-1.5" />}
+            <Button
+              type="button"
+              size="sm"
+              disabled={busy}
+              onClick={() => inputRef.current?.click()}
+            >
+              {busy ? (
+                <Loader2 className="size-4 animate-spin mr-1.5" />
+              ) : (
+                <Upload className="size-4 mr-1.5" />
+              )}
               {busy ? "Parsing file…" : "Upload CSV / Excel"}
             </Button>
           </div>
@@ -163,7 +187,9 @@ export function LeadImport() {
                 <Card className="p-3 bg-emerald-500/5 border-emerald-500/30 flex items-center gap-3">
                   <CheckCircle2 className="size-5 text-emerald-600 shrink-0" />
                   <div>
-                    <div className="text-2xl font-bold text-emerald-700">{previewData.newLeads.length}</div>
+                    <div className="text-2xl font-bold text-emerald-700">
+                      {previewData.newLeads.length}
+                    </div>
                     <div className="text-xs font-medium text-emerald-600">New Leads to Add</div>
                   </div>
                 </Card>
@@ -179,8 +205,12 @@ export function LeadImport() {
                 <Card className="p-3 bg-destructive/5 border-destructive/30 flex items-center gap-3">
                   <XCircle className="size-5 text-destructive shrink-0" />
                   <div>
-                    <div className="text-2xl font-bold text-destructive">{previewData.invalidRows.length}</div>
-                    <div className="text-xs font-medium text-destructive">Invalid / Skipped Rows</div>
+                    <div className="text-2xl font-bold text-destructive">
+                      {previewData.invalidRows.length}
+                    </div>
+                    <div className="text-xs font-medium text-destructive">
+                      Invalid / Skipped Rows
+                    </div>
                   </div>
                 </Card>
               </div>
@@ -223,7 +253,10 @@ export function LeadImport() {
                               <td className="p-2.5 font-medium">{lead.email}</td>
                               <td className="p-2.5 text-muted-foreground">{lead.name || "—"}</td>
                               <td className="p-2.5 text-right">
-                                <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 border-emerald-500/30">
+                                <Badge
+                                  variant="outline"
+                                  className="bg-emerald-500/10 text-emerald-700 border-emerald-500/30"
+                                >
                                   Ready
                                 </Badge>
                               </td>
@@ -256,22 +289,34 @@ export function LeadImport() {
                         ) : (
                           <>
                             {previewData.dbDuplicates.map((dup, idx) => (
-                              <tr key={`db_${idx}`} className="border-b hover:bg-muted/20 bg-amber-500/5">
+                              <tr
+                                key={`db_${idx}`}
+                                className="border-b hover:bg-muted/20 bg-amber-500/5"
+                              >
                                 <td className="p-2.5 font-medium">{dup.email}</td>
                                 <td className="p-2.5 text-muted-foreground">{dup.name || "—"}</td>
                                 <td className="p-2.5">
-                                  <Badge variant="outline" className="border-amber-500/40 text-amber-700">
+                                  <Badge
+                                    variant="outline"
+                                    className="border-amber-500/40 text-amber-700"
+                                  >
                                     Already on subscriber list
                                   </Badge>
                                 </td>
                               </tr>
                             ))}
                             {previewData.fileDuplicates.map((dup, idx) => (
-                              <tr key={`file_${idx}`} className="border-b last:border-0 hover:bg-muted/20 bg-amber-500/5">
+                              <tr
+                                key={`file_${idx}`}
+                                className="border-b last:border-0 hover:bg-muted/20 bg-amber-500/5"
+                              >
                                 <td className="p-2.5 font-medium">{dup.email}</td>
                                 <td className="p-2.5 text-muted-foreground">{dup.name || "—"}</td>
                                 <td className="p-2.5">
-                                  <Badge variant="outline" className="border-amber-500/40 text-amber-700">
+                                  <Badge
+                                    variant="outline"
+                                    className="border-amber-500/40 text-amber-700"
+                                  >
                                     Repeated in file (Row {dup.firstRow})
                                   </Badge>
                                 </td>
@@ -304,9 +349,14 @@ export function LeadImport() {
                           </tr>
                         ) : (
                           previewData.invalidRows.map((inv, idx) => (
-                            <tr key={idx} className="border-b last:border-0 hover:bg-muted/20 bg-destructive/5">
+                            <tr
+                              key={idx}
+                              className="border-b last:border-0 hover:bg-muted/20 bg-destructive/5"
+                            >
                               <td className="p-2.5 font-mono">Row {inv.row}</td>
-                              <td className="p-2.5 font-medium max-w-xs truncate">{inv.email || "(empty)"}</td>
+                              <td className="p-2.5 font-medium max-w-xs truncate">
+                                {inv.email || "(empty)"}
+                              </td>
                               <td className="p-2.5 text-destructive font-medium">{inv.reason}</td>
                             </tr>
                           ))
@@ -320,7 +370,11 @@ export function LeadImport() {
           )}
 
           <DialogFooter className="border-t pt-3 shrink-0 flex flex-row items-center justify-between">
-            <Button variant="outline" onClick={() => setShowPreviewModal(false)} disabled={importing}>
+            <Button
+              variant="outline"
+              onClick={() => setShowPreviewModal(false)}
+              disabled={importing}
+            >
               Cancel
             </Button>
             <Button
@@ -334,7 +388,8 @@ export function LeadImport() {
                 </>
               ) : (
                 <>
-                  Import {previewData?.newLeads.length || 0} New Lead{previewData?.newLeads.length === 1 ? "" : "s"}
+                  Import {previewData?.newLeads.length || 0} New Lead
+                  {previewData?.newLeads.length === 1 ? "" : "s"}
                   <ArrowRight className="size-4 ml-1.5" />
                 </>
               )}

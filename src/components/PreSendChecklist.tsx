@@ -1,4 +1,13 @@
-import { CheckCircle2, XCircle, AlertTriangle, ShieldCheck, Clock, Mail, Users, FileText } from "lucide-react";
+import {
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  ShieldCheck,
+  Clock,
+  Mail,
+  Users,
+  FileText,
+} from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
@@ -36,8 +45,8 @@ export function PreSendChecklist({
       message: capExceeded
         ? `Recipient count (${recipientCount}) exceeds daily cap (${dailyCap})`
         : recipientCount > 0
-        ? `${recipientCount} subscribed lead(s) within daily cap (${dailyCap})`
-        : "No subscribed leads available to send to",
+          ? `${recipientCount} subscribed lead(s) within daily cap (${dailyCap})`
+          : "No subscribed leads available to send to",
     },
     {
       id: "sender",
@@ -104,7 +113,9 @@ export function PreSendChecklist({
             )}
             <div>
               <span className="font-medium">{item.label}: </span>
-              <span className={item.passed ? "text-muted-foreground" : "text-destructive font-medium"}>
+              <span
+                className={item.passed ? "text-muted-foreground" : "text-destructive font-medium"}
+              >
                 {item.message}
               </span>
             </div>

@@ -12,6 +12,45 @@ const MAX_ATTEMPTS = 3;
 
 const scheduleInput = z.object({ campaignId: z.string().uuid(), scheduledFor: z.string() });
 
+async function parseResendError(res: Response): Promise<string> {
+  const status = res.status;
+  let rawText = "";
+  try {
+    rawText = await res.text();
+  } catch {
+    rawText = "";
+  }
+
+  let jsonDetail: { message?: string; name?: string; statusCode?: number; error?: string } | null =
+    null;
+  if (rawText) {
+    try {
+      jsonDetail = JSON.parse(rawText);
+    } catch {
+      // plain text
+    }
+  }
+
+  let detailMsg = (jsonDetail?.message || jsonDetail?.error || rawText)
+    .replaceAll(/\s+/g, " ")
+    .trim();
+  if (detailMsg.length > 350) detailMsg = detailMsg.slice(0, 350) + "…";
+
+  if (status === 403) {
+    return `HTTP 403 Forbidden: Resend domain validation failed — ${detailMsg || "Sender address domain is not verified in Resend account."}`;
+  }
+  if (status === 422) {
+    return `HTTP 422 Unprocessable Entity: ${detailMsg || "Invalid recipient email address or payload format."}`;
+  }
+  if (status === 400) {
+    return `HTTP 400 Bad Request: ${detailMsg || "Invalid email payload."}`;
+  }
+  if (status === 429) {
+    return `HTTP 429 Rate Limit Exceeded: ${detailMsg || "Too many requests to Resend API."}`;
+  }
+  return `Resend returned HTTP ${status}${detailMsg ? `: ${detailMsg}` : ""}`;
+}
+
 /**
  * Core background queue worker loop.
  * Can be triggered asynchronously or via API endpoint.
@@ -57,14 +96,16 @@ export async function runQueueWorker(targetCampaignId?: string, origin?: string)
       .gte("sent_at", since);
     return count ?? 0;
   };
-  let remainingToday = enforceCaps ? dailyCap - (await countSince(dayStart)) : Number.MAX_SAFE_INTEGER;
-  let remainingMonth = enforceCaps ? monthlyCap - (await countSince(monthStart)) : Number.MAX_SAFE_INTEGER;
+  let remainingToday = enforceCaps
+    ? dailyCap - (await countSince(dayStart))
+    : Number.MAX_SAFE_INTEGER;
+  let remainingMonth = enforceCaps
+    ? monthlyCap - (await countSince(monthStart))
+    : Number.MAX_SAFE_INTEGER;
   if (remainingToday <= 0 || remainingMonth <= 0) {
     console.warn("Worker: sending cap reached, deferring queue.");
     return;
   }
-
-
 
   let campaignIds: string[] = [];
   if (targetCampaignId) {
@@ -90,7 +131,14 @@ export async function runQueueWorker(targetCampaignId?: string, origin?: string)
       .eq("id", cid)
       .maybeSingle();
 
-    if (!campaign || campaign.status === "completed" || campaign.status === "sent" || campaign.status === "cancelled" || campaign.status === "draft") continue;
+    if (
+      !campaign ||
+      campaign.status === "completed" ||
+      campaign.status === "sent" ||
+      campaign.status === "cancelled" ||
+      campaign.status === "draft"
+    )
+      continue;
 
     // Mark campaign as sending
     await supabaseAdmin.from("campaigns").update({ status: "sending" }).eq("id", cid);
@@ -205,7 +253,12 @@ export async function runQueueWorker(targetCampaignId?: string, origin?: string)
       </div>`;
       html += `<img src="${pixelUrl}" width="1" height="1" alt="" style="display:block;border:0;" />`;
 
-      const plainText = campaign.body_text || html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+      const plainText =
+        campaign.body_text ||
+        html
+          .replace(/<[^>]+>/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
 
       const attempt = send.attempt_count + 1;
       await supabaseAdmin
@@ -259,11 +312,10 @@ export async function runQueueWorker(targetCampaignId?: string, origin?: string)
           adaptivePauseMs = Math.max(adaptivePauseMs, pauseSec * 1000);
         }
 
-        const body = (await res.text()).replaceAll(/\s+/g, " ").slice(0, 300);
-        const failureReason = `Resend returned ${res.status}${body ? `: ${body}` : ""}`;
+        const failureReason = await parseResendError(res);
 
         // Hard bounce / invalid email handling -> permanently suppress
-        if (res.status === 400 || body.toLowerCase().includes("invalid")) {
+        if (res.status === 400 || failureReason.toLowerCase().includes("invalid")) {
           await supabaseAdmin
             .from("leads")
             .update({
@@ -279,6 +331,17 @@ export async function runQueueWorker(targetCampaignId?: string, origin?: string)
           .from("sends")
           .update({ status: "failed", failure_reason: failureReason })
           .eq("id", send.id);
+
+        await supabaseAdmin.from("audit_logs").insert({
+          action: "send_failed",
+          details: {
+            campaignId: cid,
+            sendId: send.id,
+            leadEmail: lead.email,
+            status: res.status,
+            error: failureReason,
+          },
+        });
       } catch (err) {
         const failureReason = err instanceof Error ? err.message : "Resend request error";
         await supabaseAdmin
@@ -404,7 +467,6 @@ export const sendCampaign = createServerFn({ method: "POST" })
       }
     }
 
-
     // Recipient snapshotting: only select subscribed leads with active suppression status
     const { data: leads, error: leadsError } = await supabaseAdmin
       .from("leads")
@@ -437,16 +499,14 @@ export const sendCampaign = createServerFn({ method: "POST" })
     });
 
     // Insert queued send records
-    const { error: sendsError } = await supabaseAdmin
-      .from("sends")
-      .insert(
-        leads.map((lead) => ({
-          campaign_id: campaign.id,
-          lead_id: lead.id,
-          status: "queued",
-          attempt_count: 0,
-        })),
-      );
+    const { error: sendsError } = await supabaseAdmin.from("sends").insert(
+      leads.map((lead) => ({
+        campaign_id: campaign.id,
+        lead_id: lead.id,
+        status: "queued",
+        attempt_count: 0,
+      })),
+    );
     if (sendsError) {
       await supabaseAdmin.from("campaigns").update({ status: "draft" }).eq("id", campaign.id);
       throw new Error(sendsError.message);
@@ -506,17 +566,19 @@ export const scheduleCampaign = createServerFn({ method: "POST" })
 
     // Populate queued send records so when scheduled_for arrives, worker delivers them
     if (leads && leads.length > 0) {
-      await supabaseAdmin.from("sends").delete().eq("campaign_id", data.campaignId).eq("status", "queued");
       await supabaseAdmin
         .from("sends")
-        .insert(
-          leads.map((lead) => ({
-            campaign_id: data.campaignId,
-            lead_id: lead.id,
-            status: "queued",
-            attempt_count: 0,
-          })),
-        );
+        .delete()
+        .eq("campaign_id", data.campaignId)
+        .eq("status", "queued");
+      await supabaseAdmin.from("sends").insert(
+        leads.map((lead) => ({
+          campaign_id: data.campaignId,
+          lead_id: lead.id,
+          status: "queued",
+          attempt_count: 0,
+        })),
+      );
     }
 
     // Audit log schedule
@@ -607,7 +669,8 @@ export const sendTestEmail = createServerFn({ method: "POST" })
       .maybeSingle();
 
     const businessName = settings?.business_name || "Campaign Companion";
-    const postalAddress = settings?.postal_address || "123 Business Street, Mumbai, MH 400001, India";
+    const postalAddress =
+      settings?.postal_address || "123 Business Street, Mumbai, MH 400001, India";
     const supportEmail = settings?.support_email || "support@example.com";
     const fromAddress = (settings?.from_address ?? "").trim();
     if (!isVerifiedSenderAddress(fromAddress)) throw new Error(SENDER_REQUIRED_MESSAGE);
@@ -672,7 +735,12 @@ export const sendTestEmail = createServerFn({ method: "POST" })
     </div>`;
     html += `<img src="${pixelUrl}" width="1" height="1" alt="" style="display:block;border:0;" />`;
 
-    const plainText = campaign.body_text || html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    const plainText =
+      campaign.body_text ||
+      html
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
 
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -694,13 +762,34 @@ export const sendTestEmail = createServerFn({ method: "POST" })
     });
 
     if (!res.ok) {
-      const body = (await res.text()).replaceAll(/\s+/g, " ").slice(0, 300);
-      const failureReason = `Resend returned ${res.status}${body ? `: ${body}` : ""}`;
+      const failureReason = await parseResendError(res);
       await supabaseAdmin
         .from("sends")
         .update({ status: "failed", failure_reason: failureReason })
         .eq("id", sendId);
-      throw new Error(failureReason);
+
+      await supabaseAdmin.from("audit_logs").insert({
+        action: "test_email_failed",
+        details: {
+          campaignId: campaign.id,
+          testEmail: data.testEmail,
+          sendId,
+          error: failureReason,
+          fromAddress,
+        },
+      });
+
+      return {
+        success: false,
+        sendId,
+        recipientEmail: data.testEmail,
+        fromAddress,
+        status: "failed",
+        failureReason,
+        providerMessageId: null,
+        pixelUrl,
+        clickUrl,
+      };
     }
 
     const resData = await res.json().catch(() => ({}));
@@ -710,18 +799,23 @@ export const sendTestEmail = createServerFn({ method: "POST" })
         status: "sent",
         sent_at: new Date().toISOString(),
         provider_message_id: resData.id || null,
+        failure_reason: null,
       })
       .eq("id", sendId);
 
     await supabaseAdmin.from("audit_logs").insert({
       action: "test_email_sent",
-      details: { campaignId: campaign.id, testEmail: data.testEmail, sendId },
+      details: { campaignId: campaign.id, testEmail: data.testEmail, sendId, fromAddress },
     });
 
     return {
       success: true,
       sendId,
       recipientEmail: data.testEmail,
+      fromAddress,
+      status: "sent",
+      failureReason: null,
+      providerMessageId: resData.id || null,
       pixelUrl,
       clickUrl,
     };
@@ -744,10 +838,7 @@ export const retryFailedSends = createServerFn({ method: "POST" })
 
     if (sendsError) throw new Error(sendsError.message);
 
-    await supabaseAdmin
-      .from("campaigns")
-      .update({ status: "sending" })
-      .eq("id", data.campaignId);
+    await supabaseAdmin.from("campaigns").update({ status: "sending" }).eq("id", data.campaignId);
 
     // Audit log retry
     await supabaseAdmin.from("audit_logs").insert({
@@ -784,10 +875,7 @@ export const retrySingleSend = createServerFn({ method: "POST" })
       .update({ status: "queued", failure_reason: null, attempt_count: 0 })
       .eq("id", send.id);
 
-    await supabaseAdmin
-      .from("campaigns")
-      .update({ status: "sending" })
-      .eq("id", send.campaign_id);
+    await supabaseAdmin.from("campaigns").update({ status: "sending" }).eq("id", send.campaign_id);
 
     // Audit log single retry
     await supabaseAdmin.from("audit_logs").insert({
@@ -803,7 +891,9 @@ export const retrySingleSend = createServerFn({ method: "POST" })
   });
 
 export const checkAndRepairQueue = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown) => z.object({ campaignId: z.string().uuid().optional() }).parse(data ?? {}))
+  .inputValidator((data: unknown) =>
+    z.object({ campaignId: z.string().uuid().optional() }).parse(data ?? {}),
+  )
   .handler(async ({ data }) => {
     const { assertOwner } = await import("./owner-guard.server");
     assertOwner();
@@ -866,10 +956,7 @@ export const stopCampaignSending = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     // Mark campaign as cancelled
-    await supabaseAdmin
-      .from("campaigns")
-      .update({ status: "cancelled" })
-      .eq("id", data.campaignId);
+    await supabaseAdmin.from("campaigns").update({ status: "cancelled" }).eq("id", data.campaignId);
 
     // Mark any unsent sends as skipped
     const { count } = await supabaseAdmin
@@ -905,10 +992,7 @@ export const resumeCampaignSending = createServerFn({ method: "POST" })
       .in("status", ["skipped", "failed"]);
 
     // Mark campaign as queued
-    await supabaseAdmin
-      .from("campaigns")
-      .update({ status: "queued" })
-      .eq("id", data.campaignId);
+    await supabaseAdmin.from("campaigns").update({ status: "queued" }).eq("id", data.campaignId);
 
     await supabaseAdmin.from("audit_logs").insert({
       action: "campaign_sending_resumed",
@@ -951,8 +1035,3 @@ export const rescheduleCampaign = createServerFn({ method: "POST" })
 
     return { success: true, scheduledFor: newDate.toISOString() };
   });
-
-
-
-
-

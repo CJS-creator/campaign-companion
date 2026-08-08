@@ -36,7 +36,6 @@ export const loginServerFn = createServerFn({ method: "POST" })
     return { success: true as const };
   });
 
-
 export const logoutServerFn = createServerFn({ method: "POST" }).handler(async () => {
   const { clearOwnerSessionCookie } = await import("@/lib/auth.server");
   setResponseHeader("Set-Cookie", clearOwnerSessionCookie());
@@ -80,7 +79,6 @@ function LoginPage() {
     }
   };
 
-
   return (
     <div className="flex min-h-[70vh] items-center justify-center px-4">
       <Card className="w-full max-w-md p-6 space-y-6 shadow-lg border-border">
@@ -114,10 +112,10 @@ function LoginPage() {
             </p>
           )}
 
-
-
           <Button type="submit" className="w-full" disabled={loading || !password}>
-            {loading ? "Authenticating…" : (
+            {loading ? (
+              "Authenticating…"
+            ) : (
               <span className="flex items-center gap-2">
                 <LogIn className="size-4" /> Login as Owner
               </span>
@@ -127,7 +125,11 @@ function LoginPage() {
 
         <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/40 p-3 rounded-md">
           <ShieldAlert className="size-4 shrink-0 text-amber-500" />
-          <span>Default development password is <code className="font-mono bg-muted px-1 rounded">admin123</code> (configured via <code className="font-mono">OWNER_PASSWORD</code> env).</span>
+          <span>
+            Default development password is{" "}
+            <code className="font-mono bg-muted px-1 rounded">admin123</code> (configured via{" "}
+            <code className="font-mono">OWNER_PASSWORD</code> env).
+          </span>
         </div>
       </Card>
     </div>

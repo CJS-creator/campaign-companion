@@ -13,7 +13,15 @@ import type { Campaign, EventRow, Lead, Send } from "@/lib/types";
 export type { Campaign, EventRow, Lead, Send, LeadSort };
 export { LEADS_PAGE_SIZE };
 
-export function leadsPageQuery({ search, sort, page }: { search: string; sort: LeadSort; page: number }) {
+export function leadsPageQuery({
+  search,
+  sort,
+  page,
+}: {
+  search: string;
+  sort: LeadSort;
+  page: number;
+}) {
   return {
     queryKey: ["leads", "page", search.trim(), sort, page],
     queryFn: (): Promise<{ leads: Lead[]; count: number }> =>
@@ -54,7 +62,6 @@ export interface EventFilters {
 export function eventsQuery(filters: EventFilters) {
   return {
     queryKey: ["events", filters],
-    queryFn: (): Promise<EventRow[]> =>
-      fetchEvents({ data: { ...filters, limit: 1000 } }),
+    queryFn: (): Promise<EventRow[]> => fetchEvents({ data: { ...filters, limit: 1000 } }),
   };
 }

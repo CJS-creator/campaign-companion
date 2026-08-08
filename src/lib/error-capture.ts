@@ -41,7 +41,12 @@ const TTL_MS = 5_000;
 
 function record(error: unknown, source: CapturedError["source"] = "console") {
   lastCapturedError = { error, at: Date.now() };
-  const message = error instanceof Error ? error.message : typeof error === "string" ? error : safeStringify(error);
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "string"
+        ? error
+        : safeStringify(error);
   const stack = error instanceof Error ? error.stack : undefined;
   addCapturedErrorRecord({ message, stack, source });
 }
@@ -101,7 +106,9 @@ console.error = (...args: unknown[]) => {
 };
 
 if (typeof globalThis.addEventListener === "function") {
-  globalThis.addEventListener("error", (event) => record((event as ErrorEvent).error ?? event, "client_window"));
+  globalThis.addEventListener("error", (event) =>
+    record((event as ErrorEvent).error ?? event, "client_window"),
+  );
   globalThis.addEventListener("unhandledrejection", (event) =>
     record((event as PromiseRejectionEvent).reason, "unhandled_rejection"),
   );
@@ -117,4 +124,3 @@ export function consumeLastCapturedError(): unknown {
   lastCapturedError = undefined;
   return error;
 }
-

@@ -25,11 +25,7 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
 
   const insertOfferLink = () => {
     ref.current?.focus();
-    document.execCommand(
-      "insertHTML",
-      false,
-      '<a href="{{offer_link}}">See the offer</a>',
-    );
+    document.execCommand("insertHTML", false, '<a href="{{offer_link}}">See the offer</a>');
     onChange(ref.current?.innerHTML ?? "");
   };
 
@@ -42,20 +38,10 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
         <Button type="button" variant="ghost" size="sm" onClick={() => exec("italic")}>
           <Italic className="size-4" />
         </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={() => exec("formatBlock", "<h2>")}
-        >
+        <Button type="button" variant="ghost" size="sm" onClick={() => exec("formatBlock", "<h2>")}>
           <Heading2 className="size-4" />
         </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={() => exec("insertUnorderedList")}
-        >
+        <Button type="button" variant="ghost" size="sm" onClick={() => exec("insertUnorderedList")}>
           <List className="size-4" />
         </Button>
         <div className="mx-1 h-5 w-px bg-border" />

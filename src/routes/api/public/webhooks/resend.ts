@@ -5,11 +5,7 @@ import crypto from "node:crypto";
  * Resend webhook receiver (Svix-signed).
  * Handles bounces, complaints, deliveries, opens and clicks.
  */
-function verifySvixSignature(
-  secret: string,
-  headers: Headers,
-  payload: string,
-): boolean {
+function verifySvixSignature(secret: string, headers: Headers, payload: string): boolean {
   const id = headers.get("svix-id");
   const timestamp = headers.get("svix-timestamp");
   const signatureHeader = headers.get("svix-signature");
@@ -165,7 +161,6 @@ export const Route = createFileRoute("/api/public/webhooks/resend")({
             suppressed: autoSuppress,
           },
         });
-
 
         return new Response(JSON.stringify({ received: true }), {
           status: 200,

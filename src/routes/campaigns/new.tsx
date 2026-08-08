@@ -4,7 +4,16 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { z } from "zod";
-import { ShieldCheck, ShieldAlert, Loader2, TriangleAlert, Tag, Clock, Calendar, Send } from "lucide-react";
+import {
+  ShieldCheck,
+  ShieldAlert,
+  Loader2,
+  TriangleAlert,
+  Tag,
+  Clock,
+  Calendar,
+  Send,
+} from "lucide-react";
 import { leadsQuery, campaignQuery } from "@/lib/data";
 import { isVerifiedSenderAddress } from "@/lib/sender";
 import { createCampaign } from "@/lib/app.functions";
@@ -271,8 +280,12 @@ function ComposerPage() {
 
           {isScheduling && (
             <div className="space-y-2 rounded-md border p-3 bg-muted/20">
-              <Label htmlFor="scheduleTime" className="flex items-center gap-1.5 text-xs font-medium">
-                <Calendar className="size-3.5 text-primary" /> Select Send Date & Time (India Standard Time - IST)
+              <Label
+                htmlFor="scheduleTime"
+                className="flex items-center gap-1.5 text-xs font-medium"
+              >
+                <Calendar className="size-3.5 text-primary" /> Select Send Date & Time (India
+                Standard Time - IST)
               </Label>
               <Input
                 id="scheduleTime"
@@ -285,9 +298,7 @@ function ComposerPage() {
 
           {!senderVerified && (
             <div className="flex flex-wrap items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700">
-              <span>
-                No verified sender address is configured, so sending is disabled.
-              </span>
+              <span>No verified sender address is configured, so sending is disabled.</span>
               <Link to="/settings" className="font-medium underline underline-offset-2">
                 Add it in Settings
               </Link>
@@ -297,18 +308,16 @@ function ComposerPage() {
           <div className="flex flex-wrap items-center gap-3 pt-2">
             <Button
               variant="outline"
-              disabled={draftMutation.isPending || sendMutation.isPending || scheduleMutation.isPending}
+              disabled={
+                draftMutation.isPending || sendMutation.isPending || scheduleMutation.isPending
+              }
               onClick={() => draftMutation.mutate()}
             >
               Save draft
             </Button>
 
             {!isScheduling ? (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setIsScheduling(true)}
-              >
+              <Button type="button" variant="outline" onClick={() => setIsScheduling(true)}>
                 <Clock className="size-4 mr-1.5" /> Schedule…
               </Button>
             ) : (
@@ -351,7 +360,9 @@ function ComposerPage() {
 
 function useMutationHandler(
   mode: "draft" | "send" | "schedule",
-  save: (status: "draft" | "send" | "schedule") => Promise<{ campaignId: string; started: boolean }>,
+  save: (
+    status: "draft" | "send" | "schedule",
+  ) => Promise<{ campaignId: string; started: boolean }>,
   qc: ReturnType<typeof useQueryClient>,
   navigate: ReturnType<typeof useNavigate>,
   recipients: number,
@@ -383,4 +394,3 @@ function useMutationHandler(
     },
   });
 }
-

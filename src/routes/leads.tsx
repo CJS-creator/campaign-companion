@@ -18,9 +18,15 @@ export const Route = createFileRoute("/leads")({
   head: () => ({
     meta: [
       { title: "Leads — Postmark Studio" },
-      { name: "description", content: "Add and manage the subscriber list for your email campaigns." },
+      {
+        name: "description",
+        content: "Add and manage the subscriber list for your email campaigns.",
+      },
       { property: "og:title", content: "Leads — Postmark Studio" },
-      { property: "og:description", content: "Add and manage the subscriber list for your email campaigns." },
+      {
+        property: "og:description",
+        content: "Add and manage the subscriber list for your email campaigns.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
@@ -43,9 +49,11 @@ function LeadsPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const deferredSearch = useDeferredValue(search);
-  const { data: pagedData, isLoading, isFetching } = useQuery(
-    leadsPageQuery({ search: deferredSearch, sort, page }),
-  );
+  const {
+    data: pagedData,
+    isLoading,
+    isFetching,
+  } = useQuery(leadsPageQuery({ search: deferredSearch, sort, page }));
   const leads = pagedData?.leads ?? [];
   const total = pagedData?.count ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / LEADS_PAGE_SIZE));
@@ -82,9 +90,12 @@ function LeadsPage() {
       qc.invalidateQueries({ queryKey: ["leads"] });
     },
     onError: (err: unknown) => {
-      const message = err instanceof z.ZodError
-        ? (err.issues[0]?.message ?? "Invalid input")
-        : err instanceof Error ? err.message : "Something went wrong";
+      const message =
+        err instanceof z.ZodError
+          ? (err.issues[0]?.message ?? "Invalid input")
+          : err instanceof Error
+            ? err.message
+            : "Something went wrong";
       toast.error(message);
     },
   });
@@ -136,7 +147,12 @@ function LeadsPage() {
     const escape = (value: string) => `"${value.replaceAll('"', '""')}"`;
     const rows = [
       ["email", "name", "subscribed", "created_at"],
-      ...exportLeads.map((lead) => [lead.email, lead.name ?? "", lead.subscribed ? "true" : "false", lead.created_at]),
+      ...exportLeads.map((lead) => [
+        lead.email,
+        lead.name ?? "",
+        lead.subscribed ? "true" : "false",
+        lead.created_at,
+      ]),
     ];
     const csv = rows.map((row) => row.map((cell) => escape(String(cell))).join(",")).join("\r\n");
     const url = URL.createObjectURL(new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" }));
@@ -174,13 +190,29 @@ function LeadsPage() {
         >
           <div className="space-y-1.5">
             <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" value={email} maxLength={255} placeholder="jane@example.com" onChange={(event) => setEmail(event.target.value)} required />
+            <Input
+              id="email"
+              type="email"
+              value={email}
+              maxLength={255}
+              placeholder="jane@example.com"
+              onChange={(event) => setEmail(event.target.value)}
+              required
+            />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="name">Name</Label>
-            <Input id="name" value={name} maxLength={100} placeholder="Jane Doe" onChange={(event) => setName(event.target.value)} />
+            <Input
+              id="name"
+              value={name}
+              maxLength={100}
+              placeholder="Jane Doe"
+              onChange={(event) => setName(event.target.value)}
+            />
           </div>
-          <Button type="submit" disabled={addLead.isPending}>{addLead.isPending ? "Adding…" : "Add lead"}</Button>
+          <Button type="submit" disabled={addLead.isPending}>
+            {addLead.isPending ? "Adding…" : "Add lead"}
+          </Button>
         </form>
       </Card>
 
@@ -190,7 +222,13 @@ function LeadsPage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="relative w-full max-w-sm">
             <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search email or name" aria-label="Search leads by email or name" className="pl-9 pr-8" />
+            <Input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search email or name"
+              aria-label="Search leads by email or name"
+              className="pl-9 pr-8"
+            />
             {search && (
               <button
                 type="button"
@@ -203,7 +241,12 @@ function LeadsPage() {
           </div>
           <label className="flex items-center gap-2 text-sm text-muted-foreground">
             Sort
-            <select value={sort} onChange={(event) => setSort(event.target.value as LeadSort)} className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground" aria-label="Sort leads">
+            <select
+              value={sort}
+              onChange={(event) => setSort(event.target.value as LeadSort)}
+              className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground"
+              aria-label="Sort leads"
+            >
               <option value="created_desc">Newest added</option>
               <option value="email_asc">Email A–Z</option>
               <option value="email_desc">Email Z–A</option>
@@ -215,7 +258,9 @@ function LeadsPage() {
 
         {selectedIds.size > 0 && (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-muted/60 px-4 py-2.5 text-sm">
-            <span className="font-medium text-foreground">{selectedIds.size} lead{selectedIds.size === 1 ? "" : "s"} selected</span>
+            <span className="font-medium text-foreground">
+              {selectedIds.size} lead{selectedIds.size === 1 ? "" : "s"} selected
+            </span>
             <div className="flex flex-wrap gap-2">
               <Button
                 size="sm"
@@ -250,7 +295,11 @@ function LeadsPage() {
             <thead className="border-b border-border bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
                 <th className="w-10 px-3 py-3 text-center">
-                  <Checkbox checked={allOnPageSelected} onCheckedChange={toggleSelectAll} aria-label="Select all leads on page" />
+                  <Checkbox
+                    checked={allOnPageSelected}
+                    onCheckedChange={toggleSelectAll}
+                    aria-label="Select all leads on page"
+                  />
                 </th>
                 <th className="px-5 py-3 font-medium">Email</th>
                 <th className="px-5 py-3 font-medium">Name</th>
@@ -259,19 +308,48 @@ function LeadsPage() {
               </tr>
             </thead>
             <tbody>
-              {isLoading && <tr><td colSpan={5} className="px-5 py-8 text-center text-muted-foreground">Loading…</td></tr>}
-              {!isLoading && leads.length === 0 && <tr><td colSpan={5} className="px-5 py-10 text-center text-muted-foreground">{deferredSearch ? "No leads match that search." : "No leads yet. Add your first one above."}</td></tr>}
+              {isLoading && (
+                <tr>
+                  <td colSpan={5} className="px-5 py-8 text-center text-muted-foreground">
+                    Loading…
+                  </td>
+                </tr>
+              )}
+              {!isLoading && leads.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-5 py-10 text-center text-muted-foreground">
+                    {deferredSearch
+                      ? "No leads match that search."
+                      : "No leads yet. Add your first one above."}
+                  </td>
+                </tr>
+              )}
               {leads.map((lead) => {
                 const isSelected = selectedIds.has(lead.id);
                 return (
-                  <tr key={lead.id} className={`border-b border-border last:border-0 ${isSelected ? "bg-muted/30" : ""}`}>
+                  <tr
+                    key={lead.id}
+                    className={`border-b border-border last:border-0 ${isSelected ? "bg-muted/30" : ""}`}
+                  >
                     <td className="px-3 py-3 text-center">
-                      <Checkbox checked={isSelected} onCheckedChange={() => toggleSelectOne(lead.id)} aria-label={`Select ${lead.email}`} />
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={() => toggleSelectOne(lead.id)}
+                        aria-label={`Select ${lead.email}`}
+                      />
                     </td>
                     <td className="px-5 py-3 font-medium">{lead.email}</td>
                     <td className="px-5 py-3 text-muted-foreground">{lead.name ?? "—"}</td>
-                    <td className="px-5 py-3 text-muted-foreground">{new Date(lead.created_at).toLocaleDateString()}</td>
-                    <td className="px-5 py-3 text-right"><Switch checked={lead.subscribed} onCheckedChange={() => toggleSubscribed.mutate(lead)} aria-label={`Toggle subscription for ${lead.email}`} /></td>
+                    <td className="px-5 py-3 text-muted-foreground">
+                      {new Date(lead.created_at).toLocaleDateString()}
+                    </td>
+                    <td className="px-5 py-3 text-right">
+                      <Switch
+                        checked={lead.subscribed}
+                        onCheckedChange={() => toggleSubscribed.mutate(lead)}
+                        aria-label={`Toggle subscription for ${lead.email}`}
+                      />
+                    </td>
                   </tr>
                 );
               })}
@@ -280,10 +358,28 @@ function LeadsPage() {
         </div>
         {total > 0 && (
           <div className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
-            <span>{page * LEADS_PAGE_SIZE + 1}–{Math.min((page + 1) * LEADS_PAGE_SIZE, total)} of {total}{isFetching && " · Updating…"}</span>
+            <span>
+              {page * LEADS_PAGE_SIZE + 1}–{Math.min((page + 1) * LEADS_PAGE_SIZE, total)} of{" "}
+              {total}
+              {isFetching && " · Updating…"}
+            </span>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => setPage((current) => current - 1)} disabled={page === 0}>Previous</Button>
-              <Button variant="outline" size="sm" onClick={() => setPage((current) => current + 1)} disabled={page + 1 >= totalPages}>Next</Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage((current) => current - 1)}
+                disabled={page === 0}
+              >
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage((current) => current + 1)}
+                disabled={page + 1 >= totalPages}
+              >
+                Next
+              </Button>
             </div>
           </div>
         )}
@@ -291,4 +387,3 @@ function LeadsPage() {
     </div>
   );
 }
-

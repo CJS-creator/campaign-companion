@@ -45,7 +45,13 @@ export const getSessionStatus = createServerFn({ method: "GET" }).handler(async 
 
 export const fetchLeadsPage = createServerFn({ method: "GET" })
   .inputValidator((data: unknown) =>
-    z.object({ search: z.string().default(""), sort: leadSortSchema, page: z.number().int().min(0) }).parse(data),
+    z
+      .object({
+        search: z.string().default(""),
+        sort: leadSortSchema,
+        page: z.number().int().min(0),
+      })
+      .parse(data),
   )
   .handler(async ({ data }): Promise<{ leads: Lead[]; count: number }> => {
     const db = await guard();
@@ -53,7 +59,11 @@ export const fetchLeadsPage = createServerFn({ method: "GET" })
     const { column, ascending } = sortColumns[data.sort];
     let query = db.from("leads").select("*", { count: "exact" });
     if (search) query = query.or(`email.ilike.%${search}%,name.ilike.%${search}%`);
-    const { data: rows, error, count } = await query
+    const {
+      data: rows,
+      error,
+      count,
+    } = await query
       .order(column, { ascending, nullsFirst: false })
       .range(data.page * LEADS_PAGE_SIZE, (data.page + 1) * LEADS_PAGE_SIZE - 1);
     if (error) throw new Error(error.message);
@@ -61,7 +71,13 @@ export const fetchLeadsPage = createServerFn({ method: "GET" })
   });
 
 export const fetchLeads = createServerFn({ method: "GET" })
-  .inputValidator((data: unknown) => z.object({ search: z.string().default("") }).optional().parse(data) ?? { search: "" })
+  .inputValidator(
+    (data: unknown) =>
+      z
+        .object({ search: z.string().default("") })
+        .optional()
+        .parse(data) ?? { search: "" },
+  )
   .handler(async ({ data }): Promise<Lead[]> => {
     const db = await guard();
     const search = escapeSearch(data.search ?? "");
@@ -74,7 +90,12 @@ export const fetchLeads = createServerFn({ method: "GET" })
 
 export const createLead = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) =>
-    z.object({ email: z.string().trim().email().max(255), name: z.string().trim().max(100).optional() }).parse(data),
+    z
+      .object({
+        email: z.string().trim().email().max(255),
+        name: z.string().trim().max(100).optional(),
+      })
+      .parse(data),
   )
   .handler(async ({ data }) => {
     const db = await guard();
@@ -87,14 +108,19 @@ export const createLead = createServerFn({ method: "POST" })
       consent_date: now,
       consent_note: "Added manually by the owner",
     });
-    if (error) throw new Error(error.code === "23505" ? "That email is already on the list." : error.message);
+    if (error)
+      throw new Error(
+        error.code === "23505" ? "That email is already on the list." : error.message,
+      );
     await audit("lead_added", { email, source: "manual" });
     return { ok: true };
   });
 
 export const setLeadSubscription = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) =>
-    z.object({ ids: z.array(z.string().uuid()).min(1).max(5000), subscribed: z.boolean() }).parse(data),
+    z
+      .object({ ids: z.array(z.string().uuid()).min(1).max(5000), subscribed: z.boolean() })
+      .parse(data),
   )
   .handler(async ({ data }) => {
     const db = await guard();
@@ -108,12 +134,16 @@ export const setLeadSubscription = createServerFn({ method: "POST" })
       })
       .in("id", data.ids);
     if (error) throw new Error(error.message);
-    await audit(data.subscribed ? "lead_resubscribed" : "lead_unsubscribed", { count: data.ids.length });
+    await audit(data.subscribed ? "lead_resubscribed" : "lead_unsubscribed", {
+      count: data.ids.length,
+    });
     return { ok: true, count: data.ids.length };
   });
 
 export const deleteLeads = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown) => z.object({ ids: z.array(z.string().uuid()).min(1).max(5000) }).parse(data))
+  .inputValidator((data: unknown) =>
+    z.object({ ids: z.array(z.string().uuid()).min(1).max(5000) }).parse(data),
+  )
   .handler(async ({ data }) => {
     const db = await guard();
     const { error } = await db.from("leads").delete().in("id", data.ids);
@@ -223,7 +253,12 @@ export const importLeads = createServerFn({ method: "POST" })
     z
       .object({
         rows: z
-          .array(z.object({ email: z.string().trim().email().max(255), name: z.string().trim().max(100).nullable() }))
+          .array(
+            z.object({
+              email: z.string().trim().email().max(255),
+              name: z.string().trim().max(100).nullable(),
+            }),
+          )
           .min(1)
           .max(20000),
       })
@@ -231,12 +266,18 @@ export const importLeads = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const db = await guard();
-    const rows = data.rows.map((row) => ({ email: row.email.toLowerCase(), name: row.name || null }));
+    const rows = data.rows.map((row) => ({
+      email: row.email.toLowerCase(),
+      name: row.name || null,
+    }));
     const emails = rows.map((r) => r.email);
 
     const known = new Set<string>();
     for (let i = 0; i < emails.length; i += 500) {
-      const { data: existing, error } = await db.from("leads").select("email").in("email", emails.slice(i, i + 500));
+      const { data: existing, error } = await db
+        .from("leads")
+        .select("email")
+        .in("email", emails.slice(i, i + 500));
       if (error) throw new Error(error.message);
       for (const row of existing ?? []) known.add(row.email);
     }
@@ -261,18 +302,27 @@ export const importLeads = createServerFn({ method: "POST" })
 
 /* ------------------------------- campaigns ------------------------------ */
 
-export const fetchCampaigns = createServerFn({ method: "GET" }).handler(async (): Promise<Campaign[]> => {
-  const db = await guard();
-  const { data, error } = await db.from("campaigns").select("*").order("created_at", { ascending: false });
-  if (error) throw new Error(error.message);
-  return (data ?? []) as Campaign[];
-});
+export const fetchCampaigns = createServerFn({ method: "GET" }).handler(
+  async (): Promise<Campaign[]> => {
+    const db = await guard();
+    const { data, error } = await db
+      .from("campaigns")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (error) throw new Error(error.message);
+    return (data ?? []) as Campaign[];
+  },
+);
 
 export const fetchCampaign = createServerFn({ method: "GET" })
   .inputValidator((data: unknown) => z.object({ id: z.string().uuid() }).parse(data))
   .handler(async ({ data }): Promise<Campaign | null> => {
     const db = await guard();
-    const { data: row, error } = await db.from("campaigns").select("*").eq("id", data.id).maybeSingle();
+    const { data: row, error } = await db
+      .from("campaigns")
+      .select("*")
+      .eq("id", data.id)
+      .maybeSingle();
     if (error) throw new Error(error.message);
     return (row as Campaign | null) ?? null;
   });
@@ -296,7 +346,10 @@ export const createCampaign = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const db = await guard();
-    const plainText = data.bodyHtml.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    const plainText = data.bodyHtml
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
     const { data: row, error } = await db
       .from("campaigns")
       .insert({
@@ -329,7 +382,9 @@ export const fetchEvents = createServerFn({ method: "GET" })
     const db = await guard();
     let query = db
       .from("events")
-      .select("id, event_type, reason, created_at, send_id, campaign_id, lead_id, leads(email), campaigns(subject)")
+      .select(
+        "id, event_type, reason, created_at, send_id, campaign_id, lead_id, leads(email), campaigns(subject)",
+      )
       .order("created_at", { ascending: false })
       .limit(data.limit);
 
@@ -342,12 +397,14 @@ export const fetchEvents = createServerFn({ method: "GET" })
     if (error) throw new Error(error.message);
 
     const search = data.search.trim().toLowerCase();
-    return ((rows ?? []) as unknown as Array<
-      Omit<EventRow, "lead_email" | "campaign_subject"> & {
-        leads: { email: string } | null;
-        campaigns: { subject: string } | null;
-      }
-    >)
+    return (
+      (rows ?? []) as unknown as Array<
+        Omit<EventRow, "lead_email" | "campaign_subject"> & {
+          leads: { email: string } | null;
+          campaigns: { subject: string } | null;
+        }
+      >
+    )
       .map((row) => ({
         id: row.id,
         event_type: row.event_type,
@@ -368,7 +425,9 @@ export const fetchEvents = createServerFn({ method: "GET" })
   });
 
 export const fetchAuditLogs = createServerFn({ method: "GET" })
-  .inputValidator((data: unknown) => z.object({ limit: z.number().int().min(1).max(1000).default(200) }).parse(data ?? {}))
+  .inputValidator((data: unknown) =>
+    z.object({ limit: z.number().int().min(1).max(1000).default(200) }).parse(data ?? {}),
+  )
   .handler(async ({ data }) => {
     const db = await guard();
     const { data: rows, error } = await db
@@ -377,5 +436,10 @@ export const fetchAuditLogs = createServerFn({ method: "GET" })
       .order("created_at", { ascending: false })
       .limit(data.limit);
     if (error) throw new Error(error.message);
-    return (rows ?? []) as Array<{ id: string; action: string; details: JsonValue; created_at: string }>;
+    return (rows ?? []) as Array<{
+      id: string;
+      action: string;
+      details: JsonValue;
+      created_at: string;
+    }>;
   });

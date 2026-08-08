@@ -5,16 +5,19 @@ A single-user, no-login tool to collect leads, compose campaigns, send them via 
 ## Pages
 
 **Leads** (`/leads`)
+
 - Form to add a lead (email + name), with validation and duplicate-email protection
 - Table of leads: email, name, subscribed toggle, created date
 
 **Composer** (`/campaigns/new`)
+
 - Subject line input
 - Rich text body editor
 - One "offer link" URL field; inserting `{{offer_link}}` in the body marks where the tracked link goes
 - Save as draft, or Send now (confirmation showing recipient count)
 
 **Dashboard** (`/`)
+
 - One row per campaign: subject, status, sent date, sent count, open rate, click rate
 - Click through to a campaign detail view listing individual sends and their open/click state
 
@@ -27,6 +30,7 @@ A single-user, no-login tool to collect leads, compose campaigns, send them via 
 ## Sending flow
 
 On send, a server function:
+
 1. Loads all subscribed leads
 2. Creates one `sends` row per lead (so each has a unique id)
 3. Per recipient, renders the body with:
@@ -38,6 +42,7 @@ On send, a server function:
 ## Tracking endpoints
 
 Public routes (no auth):
+
 - `GET /track/open?send_id=X` — sets `opened_at` if null, returns a 1x1 transparent GIF with no-cache headers
 - `GET /track/click?send_id=X` — sets `clicked_at` if null, then 302-redirects to the campaign's offer URL
 

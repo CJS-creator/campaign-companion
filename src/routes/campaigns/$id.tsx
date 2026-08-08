@@ -28,13 +28,20 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getSettings } from "@/lib/settings.functions";
 import { isVerifiedSenderAddress } from "@/lib/sender";
 import { SendTestEmailDialog } from "@/components/SendTestEmailDialog";
 import { CheckSendingOptionDialog } from "@/components/CheckSendingOptionDialog";
+import { CampaignErrorLogsDialog } from "@/components/CampaignErrorLogsDialog";
 
 export const Route = createFileRoute("/campaigns/$id")({
   head: () => ({
@@ -60,17 +67,21 @@ function CampaignDetail() {
   const { data: campaign, isLoading } = useQuery({
     ...campaignQuery(id),
     refetchInterval: (query) =>
-      query.state.data?.status === "queued" || query.state.data?.status === "sending" ? 1500 : false,
+      query.state.data?.status === "queued" || query.state.data?.status === "sending"
+        ? 1500
+        : false,
   });
 
   const { data: sends = [] } = useQuery({
     ...sendsQuery,
-    refetchInterval:
-      campaign?.status === "queued" || campaign?.status === "sending" ? 1500 : false,
+    refetchInterval: campaign?.status === "queued" || campaign?.status === "sending" ? 1500 : false,
   });
 
   const { data: leads = [] } = useQuery(leadsQuery);
-  const { data: ownerSettings } = useQuery({ queryKey: ["settings"], queryFn: () => getSettings() });
+  const { data: ownerSettings } = useQuery({
+    queryKey: ["settings"],
+    queryFn: () => getSettings(),
+  });
   const senderVerified = isVerifiedSenderAddress(ownerSettings?.from_address ?? "");
 
   const retryAllMutation = useMutation({
@@ -122,7 +133,8 @@ function CampaignDetail() {
   });
 
   const rescheduleMutation = useMutation({
-    mutationFn: () => rescheduleCampaign({ data: { campaignId: id, scheduledFor: newScheduleTime } }),
+    mutationFn: () =>
+      rescheduleCampaign({ data: { campaignId: id, scheduledFor: newScheduleTime } }),
     onSuccess: () => {
       toast.success("Campaign rescheduled successfully!");
       setIsRescheduleOpen(false);
@@ -178,16 +190,39 @@ function CampaignDetail() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <Button asChild variant="ghost" size="sm" className="-ml-2">
-            <Link to="/"><ArrowLeft className="size-4" /> Dashboard</Link>
+            <Link to="/">
+              <ArrowLeft className="size-4" /> Dashboard
+            </Link>
           </Button>
           <h1 className="mt-2 text-3xl font-semibold tracking-tight">{campaign.subject}</h1>
           <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-            <Badge variant={campaign.status === "sent" ? "default" : isProcessing ? "secondary" : isScheduled ? "outline" : "outline"} className={isScheduled ? "bg-purple-500/10 text-purple-700 border-purple-500/30 font-semibold" : campaign.status === "cancelled" ? "bg-destructive/10 text-destructive border-destructive/30" : ""}>
+            <Badge
+              variant={
+                campaign.status === "sent"
+                  ? "default"
+                  : isProcessing
+                    ? "secondary"
+                    : isScheduled
+                      ? "outline"
+                      : "outline"
+              }
+              className={
+                isScheduled
+                  ? "bg-purple-500/10 text-purple-700 border-purple-500/30 font-semibold"
+                  : campaign.status === "cancelled"
+                    ? "bg-destructive/10 text-destructive border-destructive/30"
+                    : ""
+              }
+            >
               {isScheduled ? "Scheduled" : campaign.status}
             </Badge>
-            {campaign.sent_at && <span>Completed {new Date(campaign.sent_at).toLocaleString()}</span>}
+            {campaign.sent_at && (
+              <span>Completed {new Date(campaign.sent_at).toLocaleString()}</span>
+            )}
             {campaign.scheduled_for && isScheduled && (
-              <span className="text-purple-600 font-medium">Scheduled for {new Date(campaign.scheduled_for).toLocaleString()}</span>
+              <span className="text-purple-600 font-medium">
+                Scheduled for {new Date(campaign.scheduled_for).toLocaleString()}
+              </span>
             )}
             {failed > 0 && (
               <span className="flex items-center gap-1 text-destructive text-xs font-medium">
@@ -243,6 +278,14 @@ function CampaignDetail() {
             </Button>
           )}
 
+          {failed > 0 && (
+            <CampaignErrorLogsDialog
+              campaignId={campaign.id}
+              campaignSubject={campaign.subject}
+              failedSends={rows.filter((s) => s.status === "failed")}
+            />
+          )}
+
           {failed > 0 && !isProcessing && (
             <Button
               type="button"
@@ -268,7 +311,8 @@ function CampaignDetail() {
               </h2>
               <p className="text-sm text-purple-700">
                 This campaign is scheduled to be automatically delivered on{" "}
-                <strong>{new Date(campaign.scheduled_for!).toLocaleString()}</strong> to {campaign.recipient_count} recipients.
+                <strong>{new Date(campaign.scheduled_for!).toLocaleString()}</strong> to{" "}
+                {campaign.recipient_count} recipients.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -322,7 +366,9 @@ function CampaignDetail() {
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
-              <Label htmlFor="rescheduleTime" className="text-xs font-medium">New Send Date & Time (IST)</Label>
+              <Label htmlFor="rescheduleTime" className="text-xs font-medium">
+                New Send Date & Time (IST)
+              </Label>
               <Input
                 id="rescheduleTime"
                 type="datetime-local"
@@ -331,7 +377,9 @@ function CampaignDetail() {
               />
             </div>
             <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={() => setIsRescheduleOpen(false)}>Cancel</Button>
+              <Button variant="outline" onClick={() => setIsRescheduleOpen(false)}>
+                Cancel
+              </Button>
               <Button
                 disabled={rescheduleMutation.isPending || !newScheduleTime}
                 onClick={() => rescheduleMutation.mutate()}
@@ -344,8 +392,13 @@ function CampaignDetail() {
       </Dialog>
 
       <Card className="p-5">
-        <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-muted-foreground">Preview</h2>
-        <div className="prose-editor text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: campaign.body_html }} />
+        <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-muted-foreground">
+          Preview
+        </h2>
+        <div
+          className="prose-editor text-sm leading-relaxed"
+          dangerouslySetInnerHTML={{ __html: campaign.body_html }}
+        />
       </Card>
 
       {isProcessing && (
@@ -365,7 +418,9 @@ function CampaignDetail() {
             <span className="text-sm font-medium tabular-nums">{progress}%</span>
           </div>
           <Progress value={progress} aria-label={`Campaign send progress: ${progress}%`} />
-          <p className="text-xs text-muted-foreground">This view refreshes automatically while delivery runs in the background queue.</p>
+          <p className="text-xs text-muted-foreground">
+            This view refreshes automatically while delivery runs in the background queue.
+          </p>
         </Card>
       )}
 
@@ -384,16 +439,32 @@ function CampaignDetail() {
           </thead>
           <tbody>
             {rows.length === 0 && (
-              <tr><td colSpan={7} className="px-5 py-10 text-center text-muted-foreground">Nothing sent yet.</td></tr>
+              <tr>
+                <td colSpan={7} className="px-5 py-10 text-center text-muted-foreground">
+                  Nothing sent yet.
+                </td>
+              </tr>
             )}
             {rows.map((send) => (
               <tr key={send.id} className="border-b border-border last:border-0">
-                <td className="px-5 py-3 font-medium">{leadById.get(send.lead_id)?.email ?? "Unknown"}</td>
-                <td className="px-5 py-3"><SendStatusBadge send={send} /></td>
-                <td className="px-5 py-3 text-muted-foreground">{send.sent_at ? new Date(send.sent_at).toLocaleString() : "—"}</td>
-                <td className="px-5 py-3 text-muted-foreground">{send.opened_at ? new Date(send.opened_at).toLocaleString() : "—"}</td>
-                <td className="px-5 py-3 text-muted-foreground">{send.clicked_at ? new Date(send.clicked_at).toLocaleString() : "—"}</td>
-                <td className="max-w-64 px-5 py-3 text-muted-foreground font-mono text-xs">{send.failure_reason ?? "—"}</td>
+                <td className="px-5 py-3 font-medium">
+                  {leadById.get(send.lead_id)?.email ?? "Unknown"}
+                </td>
+                <td className="px-5 py-3">
+                  <SendStatusBadge send={send} />
+                </td>
+                <td className="px-5 py-3 text-muted-foreground">
+                  {send.sent_at ? new Date(send.sent_at).toLocaleString() : "—"}
+                </td>
+                <td className="px-5 py-3 text-muted-foreground">
+                  {send.opened_at ? new Date(send.opened_at).toLocaleString() : "—"}
+                </td>
+                <td className="px-5 py-3 text-muted-foreground">
+                  {send.clicked_at ? new Date(send.clicked_at).toLocaleString() : "—"}
+                </td>
+                <td className="max-w-64 px-5 py-3 text-muted-foreground font-mono text-xs">
+                  {send.failure_reason ?? "—"}
+                </td>
                 <td className="px-5 py-3 text-right">
                   {send.status === "failed" && (
                     <Button
@@ -403,7 +474,9 @@ function CampaignDetail() {
                       onClick={() => retrySingleMutation.mutate(send.id)}
                       disabled={retrySingleMutation.isPending}
                     >
-                      <RefreshCw className={`size-3.5 ${retrySingleMutation.isPending ? "animate-spin" : ""}`} />
+                      <RefreshCw
+                        className={`size-3.5 ${retrySingleMutation.isPending ? "animate-spin" : ""}`}
+                      />
                       Retry
                     </Button>
                   )}
@@ -418,9 +491,21 @@ function CampaignDetail() {
 }
 
 function SendStatusBadge({ send }: { send: Send }) {
-  if (send.status === "failed") return <Badge variant="destructive">Failed (Attempt {send.attempt_count})</Badge>;
-  if (send.status === "sending") return <Badge variant="secondary">Sending (Attempt {send.attempt_count})</Badge>;
-  if (send.status === "skipped") return <Badge variant="outline" className="text-muted-foreground">Skipped</Badge>;
-  if (send.status === "sent") return <Badge className="bg-emerald-600 hover:bg-emerald-700"><CheckCircle2 className="size-3 mr-1 inline" /> Sent</Badge>;
+  if (send.status === "failed")
+    return <Badge variant="destructive">Failed (Attempt {send.attempt_count})</Badge>;
+  if (send.status === "sending")
+    return <Badge variant="secondary">Sending (Attempt {send.attempt_count})</Badge>;
+  if (send.status === "skipped")
+    return (
+      <Badge variant="outline" className="text-muted-foreground">
+        Skipped
+      </Badge>
+    );
+  if (send.status === "sent")
+    return (
+      <Badge className="bg-emerald-600 hover:bg-emerald-700">
+        <CheckCircle2 className="size-3 mr-1 inline" /> Sent
+      </Badge>
+    );
   return <Badge variant="outline">Queued</Badge>;
 }

@@ -2,10 +2,25 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { Send, Loader2, MailCheck, Eye, MousePointerClick, CheckCircle2, Clock, Sparkles } from "lucide-react";
+import {
+  Send,
+  Loader2,
+  MailCheck,
+  Eye,
+  MousePointerClick,
+  CheckCircle2,
+  Clock,
+  Sparkles,
+  ShieldCheck,
+  ShieldAlert,
+  AlertCircle,
+  ExternalLink,
+  AtSign,
+} from "lucide-react";
 import { sendTestEmail } from "@/lib/campaigns.functions";
 import { sendsQuery } from "@/lib/data";
 import { getSettings } from "@/lib/settings.functions";
+import { validateSenderAddress } from "@/lib/sender";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,18 +42,42 @@ type SendTestEmailDialogProps = {
   senderVerified?: boolean;
 };
 
-export function SendTestEmailDialog({ campaignId, campaignSubject, trigger, senderVerified = true }: SendTestEmailDialogProps) {
+interface TestResultState {
+  success: boolean;
+  sendId: string;
+  recipientEmail: string;
+  fromAddress: string;
+  status: "sent" | "failed";
+  failureReason: string | null;
+  providerMessageId: string | null;
+  pixelUrl: string;
+  clickUrl: string;
+}
+
+export function SendTestEmailDialog({
+  campaignId,
+  campaignSubject,
+  trigger,
+  senderVerified: propSenderVerified,
+}: SendTestEmailDialogProps) {
   const [open, setOpen] = useState(false);
   const [testEmail, setTestEmail] = useState("");
   const [activeSendId, setActiveSendId] = useState<string | null>(null);
+  const [lastResult, setLastResult] = useState<TestResultState | null>(null);
+
   const qc = useQueryClient();
   const executeSendTest = useServerFn(sendTestEmail);
 
-  // Fetch settings for default email
+  // Fetch settings for sender address & default email
   const { data: settings } = useQuery({
     queryKey: ["settings"],
     queryFn: () => getSettings(),
   });
+
+  const fromAddress = (settings?.from_address ?? "").trim();
+  const senderValidation = validateSenderAddress(fromAddress, settings?.sender_domain);
+  const isVerified =
+    propSenderVerified !== undefined ? propSenderVerified : senderValidation.isValid;
 
   // Query sends to monitor real-time open and click tracking on the test email
   const { data: sends = [] } = useQuery({
@@ -59,9 +98,15 @@ export function SendTestEmailDialog({ campaignId, campaignSubject, trigger, send
     },
     onSuccess: (result) => {
       setActiveSendId(result.sendId);
-      toast.success(`Test email sent to ${result.recipientEmail}`);
+      setLastResult(result as TestResultState);
       qc.invalidateQueries({ queryKey: ["sends"] });
       qc.invalidateQueries({ queryKey: ["events"] });
+
+      if (result.success) {
+        toast.success(`Test email delivered to ${result.recipientEmail}`);
+      } else {
+        toast.error(result.failureReason || "Test email delivery failed");
+      }
     },
     onError: (err) => {
       toast.error(err instanceof Error ? err.message : "Failed to send test email");
@@ -85,7 +130,7 @@ export function SendTestEmailDialog({ campaignId, campaignSubject, trigger, send
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="size-5 text-primary" />
@@ -97,8 +142,35 @@ export function SendTestEmailDialog({ campaignId, campaignSubject, trigger, send
         </DialogHeader>
 
         <div className="space-y-4 py-2">
+          {/* Configured Sender Address Display */}
+          <div className="rounded-md border bg-muted/40 p-3 text-xs space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-muted-foreground uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                <AtSign className="size-3.5" /> Configured Sender Address
+              </span>
+              {isVerified ? (
+                <Badge className="bg-emerald-600 text-white text-[10px]">
+                  <ShieldCheck className="size-3 mr-1 inline" /> Verified
+                </Badge>
+              ) : (
+                <Badge variant="destructive" className="text-[10px]">
+                  <ShieldAlert className="size-3 mr-1 inline" /> Unverified
+                </Badge>
+              )}
+            </div>
+            <p className="font-mono font-medium text-sm">
+              {fromAddress || "(No sender address configured)"}
+            </p>
+            {!isVerified && (
+              <p className="text-amber-600 font-medium pt-0.5">
+                {senderValidation.message ||
+                  "Sending stays disabled until a verified sender address is set in Settings."}
+              </p>
+            )}
+          </div>
+
           <div className="space-y-1.5">
-            <Label htmlFor="testEmailAddress">Recipient Email Address</Label>
+            <Label htmlFor="testEmailAddress">Recipient Test Email Address</Label>
             <Input
               id="testEmailAddress"
               type="email"
@@ -107,25 +179,21 @@ export function SendTestEmailDialog({ campaignId, campaignSubject, trigger, send
               onChange={(e) => setTestEmail(e.target.value)}
             />
             <p className="text-xs text-muted-foreground">
-              We'll send a live test message from your verified sender address, with embedded tracking pixel and link
-              wrappers.
+              We'll send a live test message from{" "}
+              <code className="font-mono font-semibold">{fromAddress || "your domain"}</code> with
+              embedded open tracking pixel and click tracking links.
             </p>
-            {!senderVerified && (
-              <p className="text-xs font-medium text-amber-600">
-                Set a verified sender address in Settings before sending test emails.
-              </p>
-            )}
           </div>
 
           <Button
             className="w-full"
-            disabled={testMutation.isPending || !senderVerified}
+            disabled={testMutation.isPending || !isVerified}
             onClick={() => testMutation.mutate()}
           >
             {testMutation.isPending ? (
               <>
                 <Loader2 className="size-4 animate-spin mr-2" />
-                Sending test email…
+                Sending test email via Resend…
               </>
             ) : (
               <>
@@ -135,64 +203,153 @@ export function SendTestEmailDialog({ campaignId, campaignSubject, trigger, send
             )}
           </Button>
 
-          {/* Real-time Tracking Monitor Card */}
-          {activeSendId && (
-            <Card className="space-y-3 p-4 bg-muted/40 border-primary/30">
-              <div className="flex items-center justify-between">
+          {/* Immediate Delivery Result & Tracking Status Monitor */}
+          {(lastResult || activeSendId) && (
+            <Card className="space-y-3 p-4 bg-muted/30 border-primary/30">
+              <div className="flex items-center justify-between border-b pb-2">
                 <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Live Tracking Verification
+                  Delivery Result & Tracking Status
                 </h4>
-                <Badge variant="outline" className="text-[10px] bg-background">
-                  ID: {activeSendId.slice(0, 8)}
-                </Badge>
+                {activeSendId && (
+                  <Badge variant="outline" className="text-[10px] bg-background font-mono">
+                    ID: {activeSendId.slice(0, 8)}
+                  </Badge>
+                )}
               </div>
 
-              <div className="space-y-2.5 text-xs">
-                {/* Delivery */}
-                <div className="flex items-center justify-between p-2 rounded bg-background border">
-                  <div className="flex items-center gap-2">
-                    <MailCheck className="size-4 text-emerald-600" />
-                    <span className="font-medium">Email Delivery</span>
+              {/* Immediate Delivery Status */}
+              <div className="space-y-2 text-xs">
+                {lastResult?.status === "sent" || testSendRecord?.status === "sent" ? (
+                  <div className="rounded-md border border-emerald-500/40 bg-emerald-500/10 p-3 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-emerald-800 flex items-center gap-1.5">
+                        <MailCheck className="size-4 text-emerald-600" /> Immediate Delivery Result:
+                        SENT
+                      </span>
+                      <Badge className="bg-emerald-600 text-white">Delivered</Badge>
+                    </div>
+                    <p className="text-emerald-900 text-[11px]">
+                      Sent to <strong>{lastResult?.recipientEmail || testEmail}</strong> from{" "}
+                      <strong>{fromAddress}</strong>.
+                    </p>
+                    {lastResult?.providerMessageId && (
+                      <p className="text-[11px] font-mono text-emerald-700">
+                        Provider Message ID: {lastResult.providerMessageId}
+                      </p>
+                    )}
                   </div>
-                  <Badge className="bg-emerald-600 text-white">Sent</Badge>
-                </div>
+                ) : lastResult?.status === "failed" || testSendRecord?.status === "failed" ? (
+                  <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 space-y-1 text-destructive">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold flex items-center gap-1.5">
+                        <AlertCircle className="size-4" /> Immediate Delivery Result: FAILED
+                      </span>
+                      <Badge variant="destructive">Failed</Badge>
+                    </div>
+                    <p className="font-mono text-[11px] pt-1 leading-relaxed bg-background/80 p-2 rounded border border-destructive/20">
+                      {lastResult?.failureReason ||
+                        testSendRecord?.failure_reason ||
+                        "Resend API call failed"}
+                    </p>
+                    {((lastResult?.failureReason || testSendRecord?.failure_reason) ?? "").includes(
+                      "403",
+                    ) && (
+                      <p className="text-[11px] text-amber-700 dark:text-amber-400 font-medium pt-1">
+                        Domain Verification Required: Make sure your Sender Address domain is added
+                        & verified in your Resend Dashboard.
+                      </p>
+                    )}
+                  </div>
+                ) : null}
 
-                {/* Open Tracking */}
-                <div className="flex items-center justify-between p-2 rounded bg-background border">
-                  <div className="flex items-center gap-2">
-                    <Eye className={`size-4 ${testSendRecord?.opened_at ? "text-purple-600" : "text-muted-foreground"}`} />
-                    <span className="font-medium">Open Tracking Pixel</span>
-                  </div>
-                  {testSendRecord?.opened_at ? (
-                    <span className="flex items-center gap-1 font-semibold text-purple-600">
-                      <CheckCircle2 className="size-3.5" />
-                      Opened {new Date(testSendRecord.opened_at).toLocaleTimeString()}
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-1 text-muted-foreground">
-                      <Clock className="size-3.5 animate-pulse" />
-                      Waiting for open…
-                    </span>
-                  )}
-                </div>
+                {/* Real-time Tracking Pixel & Link Verification */}
+                <div className="space-y-2 pt-1">
+                  <h5 className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                    Live Tracking Pixel & Link Monitor
+                  </h5>
 
-                {/* Click Tracking */}
-                <div className="flex items-center justify-between p-2 rounded bg-background border">
-                  <div className="flex items-center gap-2">
-                    <MousePointerClick className={`size-4 ${testSendRecord?.clicked_at ? "text-amber-600" : "text-muted-foreground"}`} />
-                    <span className="font-medium">Click Tracking Link</span>
+                  {/* Open Tracking */}
+                  <div className="flex items-center justify-between p-2.5 rounded-md bg-background border">
+                    <div className="flex items-center gap-2">
+                      <Eye
+                        className={`size-4 ${testSendRecord?.opened_at ? "text-purple-600" : "text-muted-foreground"}`}
+                      />
+                      <div>
+                        <span className="font-medium block">Open Tracking Pixel</span>
+                        <span className="text-[10px] text-muted-foreground">
+                          Monitors when recipient opens email
+                        </span>
+                      </div>
+                    </div>
+                    {testSendRecord?.opened_at ? (
+                      <span className="flex items-center gap-1 font-semibold text-purple-600">
+                        <CheckCircle2 className="size-3.5" />
+                        Opened {new Date(testSendRecord.opened_at).toLocaleTimeString()}
+                      </span>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <span className="flex items-center gap-1 text-muted-foreground text-[11px]">
+                          <Clock className="size-3.5 animate-pulse" />
+                          Waiting…
+                        </span>
+                        {lastResult?.pixelUrl && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 text-[10px] px-2 border"
+                            onClick={() => {
+                              const img = new Image();
+                              img.src = `${lastResult.pixelUrl}&t=${Date.now()}`;
+                              toast.info("Simulated email open tracking pixel request");
+                            }}
+                          >
+                            Simulate Open
+                          </Button>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  {testSendRecord?.clicked_at ? (
-                    <span className="flex items-center gap-1 font-semibold text-amber-600">
-                      <CheckCircle2 className="size-3.5" />
-                      Clicked {new Date(testSendRecord.clicked_at).toLocaleTimeString()}
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-1 text-muted-foreground">
-                      <Clock className="size-3.5 animate-pulse" />
-                      Waiting for click…
-                    </span>
-                  )}
+
+                  {/* Click Tracking */}
+                  <div className="flex items-center justify-between p-2.5 rounded-md bg-background border">
+                    <div className="flex items-center gap-2">
+                      <MousePointerClick
+                        className={`size-4 ${testSendRecord?.clicked_at ? "text-amber-600" : "text-muted-foreground"}`}
+                      />
+                      <div>
+                        <span className="font-medium block">Click Tracking Link</span>
+                        <span className="text-[10px] text-muted-foreground">
+                          Monitors when recipient clicks offer link
+                        </span>
+                      </div>
+                    </div>
+                    {testSendRecord?.clicked_at ? (
+                      <span className="flex items-center gap-1 font-semibold text-amber-600">
+                        <CheckCircle2 className="size-3.5" />
+                        Clicked {new Date(testSendRecord.clicked_at).toLocaleTimeString()}
+                      </span>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <span className="flex items-center gap-1 text-muted-foreground text-[11px]">
+                          <Clock className="size-3.5 animate-pulse" />
+                          Waiting…
+                        </span>
+                        {lastResult?.clickUrl && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 text-[10px] px-2 border"
+                            onClick={() => {
+                              window.open(lastResult.clickUrl, "_blank");
+                            }}
+                          >
+                            <ExternalLink className="size-3 mr-1" />
+                            Test Link Click
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </Card>

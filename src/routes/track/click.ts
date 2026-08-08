@@ -62,4 +62,3 @@ export const Route = createFileRoute("/track/click")({
     },
   },
 });
-
