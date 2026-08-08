@@ -422,7 +422,7 @@ export const sendCampaign = createServerFn({ method: "POST" })
 
     const { data: sendSettings } = await supabaseAdmin
       .from("settings")
-      .select("require_link_check, block_url_shorteners, from_address")
+      .select("require_link_check, block_url_shorteners, from_address, enforce_caps, daily_cap, monthly_cap")
       .eq("id", "default")
       .maybeSingle();
     if (!isVerifiedSenderAddress((sendSettings?.from_address ?? "").trim())) {
@@ -430,6 +430,7 @@ export const sendCampaign = createServerFn({ method: "POST" })
     }
     const requireLinkCheck = sendSettings?.require_link_check ?? true;
     const blockShorteners = sendSettings?.block_url_shorteners ?? true;
+
 
     // Security gate: check links
     const urlsToCheck = new Set<string>();
