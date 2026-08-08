@@ -37,7 +37,7 @@ async function parseResendError(res: Response): Promise<string> {
   if (detailMsg.length > 350) detailMsg = detailMsg.slice(0, 350) + "…";
 
   if (status === 403) {
-    return `HTTP 403 Forbidden: Resend domain validation failed — ${detailMsg || "Sender address domain is not verified in Resend account."}`;
+    return `Sender domain not verified — ${detailMsg || "the sender address's domain is not verified."} Set the Sender Address in Settings to an address on a domain you own and have verified (public mailboxes like gmail.com can never be used).`;
   }
   if (status === 422) {
     return `HTTP 422 Unprocessable Entity: ${detailMsg || "Invalid recipient email address or payload format."}`;
