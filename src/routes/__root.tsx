@@ -118,6 +118,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     ],
   }),
   beforeLoad: async ({ location }) => {
+    // Client-only gate: the Supabase session lives in localStorage, so the
+    // server has no bearer token on a hard refresh and would always redirect.
+    if (typeof window === "undefined") return;
     if (location.pathname.startsWith("/lovable/")) return;
     if (
       location.pathname.startsWith("/login") ||
@@ -126,9 +129,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     )
       return;
 
-    const { authenticated } = await getSessionStatus();
-    if (!authenticated) throw redirect({ to: "/login" });
+    const { supabase } = await import("@/integrations/supabase/client");
+    const { data } = await supabase.auth.getUser();
+    if (!data.user) throw redirect({ to: "/login" });
   },
+
   shellComponent: RootShell,
   component: RootComponent,
   notFoundComponent: NotFoundComponent,
