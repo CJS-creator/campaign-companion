@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { isVerifiedSenderAddress } from "./sender";
 
 export interface OwnerSettings {
   id: string;
@@ -50,7 +51,7 @@ export const defaultSettings: OwnerSettings = {
   postal_address: "123 Business Street, Tech Park, Mumbai, MH 400001, India",
   support_email: "support@example.com",
   sender_domain: "example.com",
-  from_address: "onboarding@resend.dev",
+  from_address: "",
   daily_cap: 100,
   monthly_cap: 3000,
   timezone: "Asia/Kolkata",
@@ -69,6 +70,15 @@ export const getSettings = createServerFn({ method: "GET" }).handler(async (): P
   const { data } = await supabaseAdmin.from("settings").select("*").eq("id", "default").maybeSingle();
   if (!data) return defaultSettings;
   return { ...defaultSettings, ...(data as Partial<OwnerSettings>) } as OwnerSettings;
+});
+
+export const getSenderStatus = createServerFn({ method: "GET" }).handler(async () => {
+  const { assertOwner } = await import("./owner-guard.server");
+  assertOwner();
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data } = await supabaseAdmin.from("settings").select("from_address").eq("id", "default").maybeSingle();
+  const fromAddress = (data?.from_address ?? "").trim();
+  return { fromAddress, verified: isVerifiedSenderAddress(fromAddress) };
 });
 
 export const getWebhookStatus = createServerFn({ method: "GET" }).handler(async () => {
