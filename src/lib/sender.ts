@@ -5,7 +5,7 @@ export const SHARED_TEST_ADDRESS = "onboarding@resend.dev";
 /** Extracts the bare email out of `Name <email@domain>` or a plain address. */
 export function extractEmail(value: string): string {
   const match = value.match(/<([^>]+)>/);
-  return (match ? match[1] : value).trim().toLowerCase();
+  return (match?.[1] ?? value).trim().toLowerCase();
 }
 
 const EMAIL_RE = /^[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+$/;
