@@ -4,8 +4,6 @@ import { z } from "zod";
 import { inspectUrl, hasBlockingIssue } from "./link-safety";
 import { isVerifiedSenderAddress, SENDER_REQUIRED_MESSAGE } from "./sender";
 
-export const FROM_ADDRESS = "onboarding@resend.dev";
-
 const sendInput = z.object({ campaignId: z.string().uuid() });
 const retrySendInput = z.object({ sendId: z.string().uuid() });
 
@@ -469,6 +467,15 @@ export const scheduleCampaign = createServerFn({ method: "POST" })
     assertOwner();
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const { data: schedSettings } = await supabaseAdmin
+      .from("settings")
+      .select("from_address")
+      .eq("id", "default")
+      .maybeSingle();
+    if (!isVerifiedSenderAddress((schedSettings?.from_address ?? "").trim())) {
+      throw new Error(SENDER_REQUIRED_MESSAGE);
+    }
 
     const { data: campaign } = await supabaseAdmin
       .from("campaigns")
