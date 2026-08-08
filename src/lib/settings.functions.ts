@@ -70,7 +70,7 @@ export const defaultSettings: OwnerSettings = {
 export const getSettings = createServerFn({ method: "GET" }).handler(
   async (): Promise<OwnerSettings> => {
     const { assertOwner } = await import("./owner-guard.server");
-    assertOwner();
+    await assertOwner();
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data } = await supabaseAdmin
       .from("settings")
@@ -84,7 +84,7 @@ export const getSettings = createServerFn({ method: "GET" }).handler(
 
 export const getSenderStatus = createServerFn({ method: "GET" }).handler(async () => {
   const { assertOwner } = await import("./owner-guard.server");
-  assertOwner();
+  await assertOwner();
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const { data } = await supabaseAdmin
     .from("settings")
@@ -98,7 +98,7 @@ export const getSenderStatus = createServerFn({ method: "GET" }).handler(async (
 
 export const getWebhookStatus = createServerFn({ method: "GET" }).handler(async () => {
   const { assertOwner } = await import("./owner-guard.server");
-  assertOwner();
+  await assertOwner();
   return {
     resendApiKey: Boolean(process.env["RESEND_API_KEY"]),
     webhookSecret: Boolean(process.env["RESEND_WEBHOOK_SECRET"]),
@@ -109,7 +109,7 @@ export const updateSettings = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => updateSettingsInput.parse(data))
   .handler(async ({ data }) => {
     const { assertOwner } = await import("./owner-guard.server");
-    assertOwner();
+    await assertOwner();
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const { data: updated, error } = await supabaseAdmin
@@ -181,7 +181,7 @@ export function getDnsRecordsForDomain(domain: string = DEFAULT_SENDING_DOMAIN):
 
 export const getDnsRecords = createServerFn({ method: "GET" }).handler(async () => {
   const { assertOwner } = await import("./owner-guard.server");
-  assertOwner();
+  await assertOwner();
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const { data } = await supabaseAdmin
     .from("settings")
@@ -207,7 +207,7 @@ export const verifyDomainDnsRecords = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => z.object({ domain: z.string().optional() }).parse(data))
   .handler(async ({ data }) => {
     const { assertOwner } = await import("./owner-guard.server");
-    assertOwner();
+    await assertOwner();
     const targetDomain = data.domain || DEFAULT_SENDING_DOMAIN;
     const records = getDnsRecordsForDomain(targetDomain);
     return {
