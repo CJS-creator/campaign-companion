@@ -170,58 +170,17 @@ export const updateSettings = createServerFn({ method: "POST" })
 
 export interface DnsRecord {
   id: string;
-  type: "TXT" | "MX" | "CNAME";
+  type: string;
   name: string;
   value: string;
-  status: "verified" | "pending" | "recommended";
+  status: "verified" | "pending" | "failed" | "recommended" | "not_started";
   purpose: string;
   priority?: number;
 }
 
 export const DEFAULT_SENDING_DOMAIN = "notify.designforge.me";
 
-export function getDnsRecordsForDomain(domain: string = DEFAULT_SENDING_DOMAIN): DnsRecord[] {
-  const cleanDomain = (domain || DEFAULT_SENDING_DOMAIN).trim().toLowerCase();
-  return [
-    {
-      id: "dkim",
-      type: "TXT",
-      name: `resend._domainkey.${cleanDomain}`,
-      value: `p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC3YqYyHk2N8y8wPz3X+U7x0VnB8m9Z1X2w3e4r5t6y7u8i9o0pA1s2d3f4g5h6j7k8l9z0x1c2v3b4n5m6==`,
-      status: "verified",
-      purpose: "DKIM email signature authentication (prevents spoofing & spam flagging)",
-    },
-    {
-      id: "spf",
-      type: "TXT",
-      name: cleanDomain,
-      value: `v=spf1 include:amazonses.com include:resend.com ~all`,
-      status: "verified",
-      purpose: "SPF authorization record (authorizes Resend to deliver mail for this domain)",
-    },
-    {
-      id: "mx",
-      type: "MX",
-      name: `feedback.${cleanDomain}`,
-      value: `feedback.resend.com`,
-      priority: 10,
-      status: "verified",
-      purpose: "Custom Return-Path MX record for bounce and complaint feedback handling",
-    },
-    {
-      id: "dmarc",
-      type: "TXT",
-      name: `_dmarc.${cleanDomain}`,
-      value: `v=DMARC1; p=none; rua=mailto:dmarc-reports@${cleanDomain.replace(/^notify\./, "")}`,
-      status: "recommended",
-      purpose: "DMARC policy enforcement record (protects brand reputation)",
-    },
-  ];
-}
-
-export const getDnsRecords = createServerFn({ method: "GET" }).handler(async () => {
-  const { assertOwner } = await import("./owner-guard.server");
-  await assertOwner();
+async function resolveSenderDomain(): Promise<string> {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const { data } = await supabaseAdmin
     .from("settings")
@@ -229,18 +188,98 @@ export const getDnsRecords = createServerFn({ method: "GET" }).handler(async () 
     .eq("id", "default")
     .maybeSingle();
 
-  let targetDomain = DEFAULT_SENDING_DOMAIN;
   if (data?.from_address && isVerifiedSenderAddress(data.from_address)) {
     const { extractEmail } = await import("./sender");
-    const extracted = extractEmail(data.from_address);
-    const parts = extracted.split("@");
-    if (parts.length === 2 && parts[1]) targetDomain = parts[1];
-  } else if (data?.sender_domain) {
-    targetDomain = data.sender_domain;
+    const parts = extractEmail(data.from_address).split("@");
+    if (parts.length === 2 && parts[1]) return parts[1];
+  }
+  return data?.sender_domain?.trim() || DEFAULT_SENDING_DOMAIN;
+}
+
+async function liveDnsSnapshot(domain: string) {
+  const { lookupResendDomain } = await import("./resend-domains.server");
+  const lookup = await lookupResendDomain(domain);
+
+  if (!lookup) {
+    return {
+      domain,
+      domainStatus: "unknown" as string,
+      records: [] as DnsRecord[],
+      allVerified: false,
+      message:
+        "Could not reach the email provider to read DNS status. Check that the API key is configured.",
+      lastCheckedAt: new Date().toISOString(),
+    };
   }
 
-  const records = getDnsRecordsForDomain(targetDomain);
-  return { domain: targetDomain, records, lastCheckedAt: new Date().toISOString() };
+  if (lookup.status === "not_found") {
+    return {
+      domain,
+      domainStatus: "not_found",
+      records: [] as DnsRecord[],
+      allVerified: false,
+      message: `${domain} is not registered with the email provider yet. Add it there, then publish the DNS records it gives you.`,
+      lastCheckedAt: new Date().toISOString(),
+    };
+  }
+
+  const records: DnsRecord[] = lookup.records.map((r, index) => {
+    const status = (r.status || "").toLowerCase();
+    const normalized: DnsRecord["status"] =
+      status === "verified"
+        ? "verified"
+        : status === "failed"
+          ? "failed"
+          : status === "not_started"
+            ? "not_started"
+            : "pending";
+    return {
+      id: `${r.record || r.type}-${index}`.toLowerCase(),
+      type: r.type,
+      name: r.name,
+      value: r.value,
+      status: normalized,
+      purpose:
+        r.record === "DKIM"
+          ? "DKIM signature authentication"
+          : r.record === "SPF"
+            ? "SPF authorization for outbound mail"
+            : r.type === "MX"
+              ? "Return-Path for bounce and complaint feedback"
+              : "Provider-required record",
+      ...(r.priority !== undefined ? { priority: r.priority } : {}),
+    };
+  });
+
+  // DMARC is not provisioned by the provider but is strongly recommended.
+  const apex = domain.split(".").slice(-2).join(".");
+  records.push({
+    id: "dmarc",
+    type: "TXT",
+    name: `_dmarc.${domain}`,
+    value: `v=DMARC1; p=none; rua=mailto:dmarc-reports@${apex}`,
+    status: "recommended",
+    purpose: "DMARC policy — start at p=none, tighten once reports look clean",
+  });
+
+  const required = records.filter((r) => r.status !== "recommended");
+  return {
+    domain,
+    domainStatus: lookup.status,
+    records,
+    allVerified: required.length > 0 && required.every((r) => r.status === "verified"),
+    message:
+      lookup.status === "verified"
+        ? "Domain is verified and ready to send."
+        : `Domain status: ${lookup.status}. Publish the pending records at your DNS provider.`,
+    lastCheckedAt: new Date().toISOString(),
+  };
+}
+
+export const getDnsRecords = createServerFn({ method: "GET" }).handler(async () => {
+  const { assertOwner } = await import("./owner-guard.server");
+  await assertOwner();
+  return liveDnsSnapshot(await resolveSenderDomain());
 });
 
 export const verifyDomainDnsRecords = createServerFn({ method: "POST" })
@@ -248,12 +287,24 @@ export const verifyDomainDnsRecords = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { assertOwner } = await import("./owner-guard.server");
     await assertOwner();
-    const targetDomain = data.domain || DEFAULT_SENDING_DOMAIN;
-    const records = getDnsRecordsForDomain(targetDomain);
-    return {
-      domain: targetDomain,
-      allVerified: true,
-      records: records.map((r) => ({ ...r, status: "verified" as const })),
-      verifiedAt: new Date().toISOString(),
-    };
+    const targetDomain = data.domain?.trim() || (await resolveSenderDomain());
+
+    // Ask the provider to re-run verification, then read the fresh state back.
+    const apiKey = process.env["RESEND_API_KEY"];
+    const { lookupResendDomain } = await import("./resend-domains.server");
+    const existing = await lookupResendDomain(targetDomain);
+    if (apiKey && existing?.id) {
+      try {
+        await fetch(`https://api.resend.com/domains/${existing.id}/verify`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${apiKey}` },
+          signal: AbortSignal.timeout(8000),
+        });
+      } catch (error) {
+        console.warn("Domain re-verification request failed:", error);
+      }
+    }
+
+    return liveDnsSnapshot(targetDomain);
   });
+
