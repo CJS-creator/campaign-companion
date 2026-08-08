@@ -1,6 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { isVerifiedSenderAddress, validateSenderAddress } from "./sender";
+import type { ResendDomainStatus, SenderBlockReason } from "./resend-domains.server";
+
 
 export interface OwnerSettings {
   id: string;
