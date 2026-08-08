@@ -10,7 +10,6 @@ import {
   Scripts,
   useLocation,
 } from "@tanstack/react-router";
-import { getSessionStatus } from "../lib/app.functions";
 import { useEffect, useState, type ReactNode } from "react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
