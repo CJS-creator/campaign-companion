@@ -42,10 +42,20 @@ export type AnalyticsSummaryData = {
   openRatePct: number;
   clickRatePct: number;
   clickToOpenRatePct: number;
+  totalBounces: number;
+  totalComplaints: number;
+  totalUnsubscribes: number;
+  totalFailed: number;
+  bounceRatePct: number;
+  complaintRatePct: number;
+  unsubscribeRatePct: number;
+  reputationRisk: "ok" | "warning" | "critical";
+  reputationMessage: string;
   timeSeries: TimeSeriesDataPoint[];
   campaignComparison: CampaignComparisonPoint[];
   topLinks: TopLinkItem[];
 };
+
 
 export const fetchAnalyticsData = createServerFn({ method: "GET" })
   .inputValidator((data: unknown) => analyticsInputSchema.parse(data ?? {}))
