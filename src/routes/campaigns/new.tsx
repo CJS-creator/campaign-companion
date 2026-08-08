@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, useSearch, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { z } from "zod";
 import { ShieldCheck, ShieldAlert, Loader2, TriangleAlert, Tag, Clock, Calendar, Send } from "lucide-react";
 import { leadsQuery, campaignQuery } from "@/lib/data";
+import { isVerifiedSenderAddress } from "@/lib/sender";
 import { createCampaign } from "@/lib/app.functions";
 import { sendCampaign, scheduleCampaign } from "@/lib/campaigns.functions";
 import { getSettings } from "@/lib/settings.functions";
@@ -57,6 +58,8 @@ function ComposerPage() {
     queryKey: ["settings"],
     queryFn: () => getSettings(),
   });
+
+  const senderVerified = isVerifiedSenderAddress(settings?.from_address ?? "");
 
   const { data: leads = [] } = useQuery(leadsQuery);
   const recipients = leads.filter((l) => l.subscribed).length;
@@ -280,6 +283,17 @@ function ComposerPage() {
             </div>
           )}
 
+          {!senderVerified && (
+            <div className="flex flex-wrap items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700">
+              <span>
+                No verified sender address is configured, so sending is disabled.
+              </span>
+              <Link to="/settings" className="font-medium underline underline-offset-2">
+                Add it in Settings
+              </Link>
+            </div>
+          )}
+
           <div className="flex flex-wrap items-center gap-3 pt-2">
             <Button
               variant="outline"
@@ -303,7 +317,8 @@ function ComposerPage() {
                   scheduleMutation.isPending ||
                   !scheduledFor ||
                   recipients === 0 ||
-                  !linkVerified
+                  !linkVerified ||
+                  !senderVerified
                 }
                 onClick={() => scheduleMutation.mutate()}
               >
@@ -317,7 +332,8 @@ function ComposerPage() {
                 draftMutation.isPending ||
                 scheduleMutation.isPending ||
                 recipients === 0 ||
-                !linkVerified
+                !linkVerified ||
+                !senderVerified
               }
               onClick={() => sendMutation.mutate()}
             >
