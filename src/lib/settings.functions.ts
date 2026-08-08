@@ -93,8 +93,44 @@ export const getSenderStatus = createServerFn({ method: "GET" }).handler(async (
     .maybeSingle();
   const fromAddress = (data?.from_address ?? "").trim();
   const validation = validateSenderAddress(fromAddress, data?.sender_domain);
-  return { fromAddress, verified: validation.isValid, validation };
+
+  // Resolve the real reason: address missing/invalid vs. domain not verified at the provider.
+  let domainStatus: ResendDomainStatus | null = null;
+  if (validation.isValid) {
+    domainStatus = await lookupResendDomain(validation.domain);
+  }
+
+  const providerVerified = domainStatus ? domainStatus.status === "verified" : null;
+  const verified = validation.isValid && providerVerified !== false;
+
+  let reason: SenderBlockReason = "ok";
+  let detail = validation.message;
+  if (!fromAddress) {
+    reason = "address_missing";
+    detail = "No sender address configured. Add one in Settings.";
+  } else if (!validation.isValid) {
+    reason = "address_invalid";
+    detail = validation.message;
+  } else if (providerVerified === false) {
+    reason = "domain_unverified";
+    detail = `The domain ${validation.domain} is not verified yet (provider status: ${domainStatus?.status ?? "unknown"}). Add the DNS records and re-verify before sending.`;
+  } else if (providerVerified === null) {
+    reason = "provider_unreachable";
+    detail =
+      "Sender address looks valid, but the provider could not be reached to confirm domain verification.";
+  }
+
+  return {
+    fromAddress,
+    verified,
+    reason,
+    detail,
+    domain: validation.domain,
+    domainStatus: domainStatus?.status ?? null,
+    validation,
+  };
 });
+
 
 export const getWebhookStatus = createServerFn({ method: "GET" }).handler(async () => {
   const { assertOwner } = await import("./owner-guard.server");
