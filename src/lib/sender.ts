@@ -86,6 +86,17 @@ export function validateSenderAddress(
     };
   }
 
+  if (FREE_MAILBOX_DOMAINS.includes(domain)) {
+    return {
+      isValid: false,
+      reason: "free_mailbox",
+      message: `You can't send campaigns from a ${domain} address — public mailbox domains can never be verified as a sending domain. Use an address on a domain you own and have verified (e.g. campaigns@notify.designforge.me).`,
+      email,
+      domain,
+    };
+  }
+
+
   return {
     isValid: true,
     reason: "valid",
