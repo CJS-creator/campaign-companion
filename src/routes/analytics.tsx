@@ -207,6 +207,52 @@ function AnalyticsPage() {
         </div>
       )}
 
+      {/* Deliverability health */}
+      {!isLoading && analytics && (
+        <>
+          {analytics.reputationRisk !== "ok" && (
+            <div
+              className={`rounded-lg border p-4 text-sm ${
+                analytics.reputationRisk === "critical"
+                  ? "border-destructive/40 bg-destructive/10 text-destructive"
+                  : "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+              }`}
+            >
+              {analytics.reputationMessage}
+            </div>
+          )}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <MetricCard
+              title="Bounce Rate"
+              icon={<Percent className="size-4 text-rose-500" />}
+              value={`${analytics.bounceRatePct}%`}
+              valueColor="text-rose-600 dark:text-rose-400"
+              subtext={`${analytics.totalBounces} bounce events`}
+            />
+            <MetricCard
+              title="Complaint Rate"
+              icon={<Percent className="size-4 text-orange-500" />}
+              value={`${analytics.complaintRatePct}%`}
+              valueColor="text-orange-600 dark:text-orange-400"
+              subtext={`${analytics.totalComplaints} spam complaints`}
+            />
+            <MetricCard
+              title="Unsubscribe Rate"
+              icon={<Percent className="size-4 text-slate-500" />}
+              value={`${analytics.unsubscribeRatePct}%`}
+              subtext={`${analytics.totalUnsubscribes} opt-outs`}
+            />
+            <MetricCard
+              title="Failed Sends"
+              icon={<Mail className="size-4 text-rose-500" />}
+              value={analytics.totalFailed}
+              subtext="Sends that never reached the provider"
+            />
+          </div>
+        </>
+      )}
+
+
       {/* Main Time-Series Line Chart */}
       <Card className="p-6 space-y-4 border-border/80 shadow-xs">
         <div>
