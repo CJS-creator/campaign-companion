@@ -398,7 +398,8 @@ export const sendCampaign = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => sendInput.parse(data))
   .handler(async ({ data }) => {
     const { assertOwner } = await import("./owner-guard.server");
-    await assertOwner();
+    const sendUser = await assertOwner();
+
 
     const apiKey = process.env["RESEND_API_KEY"];
     if (!apiKey) {
@@ -471,11 +472,12 @@ export const sendCampaign = createServerFn({ method: "POST" })
       }
     }
 
-    // Recipient snapshotting: only select subscribed leads with active suppression status
+    // Recipient snapshotting: only this account's subscribed leads with active suppression status
     const { data: leads, error: leadsError } = await supabaseAdmin
       .from("leads")
       .select("id, email, name")
       .eq("subscribed", true)
+      .or(`user_id.eq.${sendUser.userId},user_id.is.null`)
       .or("suppression_status.is.null,suppression_status.eq.active");
 
     if (leadsError) throw new Error(leadsError.message);
@@ -487,7 +489,7 @@ export const sendCampaign = createServerFn({ method: "POST" })
       .update({
         status: "queued",
         approved_at: new Date().toISOString(),
-        approved_by: "Owner",
+        approved_by: sendUser.email || "Owner",
         recipient_count: leads.length,
       })
       .eq("id", campaign.id)
@@ -498,6 +500,7 @@ export const sendCampaign = createServerFn({ method: "POST" })
 
     // Audit log approval
     await supabaseAdmin.from("audit_logs").insert({
+      user_id: sendUser.userId,
       action: "campaign_approved",
       details: { campaignId: campaign.id, recipientCount: leads.length, mode: "immediate" },
     });
@@ -505,12 +508,14 @@ export const sendCampaign = createServerFn({ method: "POST" })
     // Insert queued send records
     const { error: sendsError } = await supabaseAdmin.from("sends").insert(
       leads.map((lead) => ({
+        user_id: sendUser.userId,
         campaign_id: campaign.id,
         lead_id: lead.id,
         status: "queued",
         attempt_count: 0,
       })),
     );
+
     if (sendsError) {
       await supabaseAdmin.from("campaigns").update({ status: "draft" }).eq("id", campaign.id);
       throw new Error(sendsError.message);
