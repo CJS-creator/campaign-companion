@@ -24,51 +24,83 @@ export function PreSendChecklist({
   dailyCap,
   monthlyCap,
   senderConfigured,
+  senderVerified = false,
   linkVerified,
   hasPlainText,
+  hasSubject = true,
+  hasBody = true,
   scheduledTime,
 }: {
   recipientCount: number;
   dailyCap: number;
   monthlyCap: number;
   senderConfigured: boolean;
+  senderVerified?: boolean;
   linkVerified: boolean;
   hasPlainText: boolean;
+  hasSubject?: boolean;
+  hasBody?: boolean;
   scheduledTime?: string | undefined;
 }) {
   const capExceeded = recipientCount > dailyCap;
+  const monthlyExceeded = recipientCount > monthlyCap;
   const items: ChecklistItem[] = [
+    {
+      id: "content",
+      label: "Subject & Body",
+      passed: hasSubject && hasBody,
+      message:
+        hasSubject && hasBody
+          ? "Subject line and email body present"
+          : !hasSubject
+            ? "Subject line is required"
+            : "Email body is empty",
+    },
     {
       id: "recipients",
       label: "Recipient Count & Cap Impact",
-      passed: recipientCount > 0 && !capExceeded,
-      message: capExceeded
-        ? `Recipient count (${recipientCount}) exceeds daily cap (${dailyCap})`
-        : recipientCount > 0
-          ? `${recipientCount} subscribed lead(s) within daily cap (${dailyCap})`
-          : "No subscribed leads available to send to",
+      passed: recipientCount > 0 && !capExceeded && !monthlyExceeded,
+      message: monthlyExceeded
+        ? `Recipient count (${recipientCount}) exceeds monthly cap (${monthlyCap})`
+        : capExceeded
+          ? `Recipient count (${recipientCount}) exceeds daily cap (${dailyCap})`
+          : recipientCount > 0
+            ? `${recipientCount} subscribed lead(s) within daily cap (${dailyCap})`
+            : "No subscribed leads available to send to",
+    },
+    {
+      id: "senderaddress",
+      label: "Verified Sender Address",
+      passed: senderVerified,
+      message: senderVerified
+        ? "Sender address on a verified domain is configured"
+        : "No verified sender address set — add one in Settings before sending",
     },
     {
       id: "sender",
-      label: "Sender Identity & Footer",
+      label: "Business Identity for Footer",
       passed: senderConfigured,
       message: senderConfigured
         ? "Registered business name & postal address ready"
-        : "Missing business address in Settings",
+        : "Missing business name or postal address in Settings",
     },
     {
       id: "unsubscribe",
       label: "Unsubscribe & Headers",
-      passed: true,
-      message: "RFC 8058 One-Click List-Unsubscribe & footer ready",
+      passed: senderConfigured,
+      message: senderConfigured
+        ? "One-click List-Unsubscribe header and footer link are added to every send"
+        : "Unsubscribe footer needs a business name and postal address in Settings",
     },
     {
       id: "plaintext",
       label: "Plain-Text Fallback (body_text)",
-      passed: true,
+      passed: hasBody,
       message: hasPlainText
         ? "Custom plain-text fallback present"
-        : "Auto-generated plain-text fallback enabled",
+        : hasBody
+          ? "Plain-text part will be generated from the HTML body"
+          : "No body content to generate a plain-text part from",
     },
     {
       id: "linksafety",
@@ -87,6 +119,7 @@ export function PreSendChecklist({
         : "Send immediately upon approval",
     },
   ];
+
 
   const allPassed = items.every((i) => i.passed);
 
