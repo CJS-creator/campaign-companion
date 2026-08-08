@@ -32,6 +32,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { CheckSendingOptionDialog } from "@/components/CheckSendingOptionDialog";
+import { EmailDeliveryMonitorView } from "@/components/EmailDeliveryMonitorView";
 
 export const Route = createFileRoute("/diagnostics")({
   head: () => ({
@@ -353,6 +354,9 @@ function DiagnosticsPage() {
           </div>
         )}
       </Card>
+
+      {/* Email Delivery Monitoring View */}
+      <EmailDeliveryMonitorView />
     </div>
   );
 }

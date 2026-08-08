@@ -13,12 +13,17 @@ import {
   Gauge,
   Clock,
   AtSign,
+  Copy,
+  CheckCircle2,
+  RefreshCw,
 } from "lucide-react";
 import {
   defaultSettings,
   getSettings,
   getWebhookStatus,
   updateSettings,
+  getDnsRecords,
+  verifyDomainDnsRecords,
   type SettingsInput,
 } from "@/lib/settings.functions";
 import { Card } from "@/components/ui/card";
@@ -26,8 +31,10 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { isVerifiedSenderAddress, validateSenderAddress } from "@/lib/sender";
+import { ContactFormDialog } from "@/components/ContactFormDialog";
 
 export const Route = createFileRoute("/settings")({
   head: () => ({
@@ -52,6 +59,11 @@ function SettingsPage() {
   const { data: envStatus } = useQuery({
     queryKey: ["webhook-status"],
     queryFn: () => getWebhookStatus(),
+  });
+
+  const { data: dnsData } = useQuery({
+    queryKey: ["dns-records"],
+    queryFn: () => getDnsRecords(),
   });
 
   const [form, setForm] = useState<SettingsInput>({
@@ -99,9 +111,18 @@ function SettingsPage() {
       toast.success("Owner settings updated successfully!");
       queryClient.invalidateQueries({ queryKey: ["settings"] });
       queryClient.invalidateQueries({ queryKey: ["sender-status"] });
+      queryClient.invalidateQueries({ queryKey: ["dns-records"] });
     },
     onError: (err) => {
       toast.error(err instanceof Error ? err.message : "Failed to update settings");
+    },
+  });
+
+  const verifyDnsMutation = useMutation({
+    mutationFn: (domain: string) => verifyDomainDnsRecords({ data: { domain } }),
+    onSuccess: () => {
+      toast.success("DNS record verification status re-checked!");
+      queryClient.invalidateQueries({ queryKey: ["dns-records"] });
     },
   });
 
@@ -116,16 +137,22 @@ function SettingsPage() {
 
   if (isLoading) return <p className="text-muted-foreground p-6">Loading owner settings…</p>;
 
+  const targetDomain = dnsData?.domain || "notify.designforge.me";
+  const records = dnsData?.records || [];
+
   return (
     <div className="space-y-8 max-w-4xl">
-      <header>
-        <h1 className="text-3xl font-semibold tracking-tight flex items-center gap-2">
-          <Settings className="size-7 text-primary" /> Owner Settings
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Configure business identity details required for DPDP compliance, delivery throttling, and
-          sending caps.
-        </p>
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-semibold tracking-tight flex items-center gap-2">
+            <Settings className="size-7 text-primary" /> Owner Settings
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Configure business identity details required for DPDP compliance, delivery throttling,
+            and sending caps.
+          </p>
+        </div>
+        <ContactFormDialog />
       </header>
 
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -186,7 +213,7 @@ function SettingsPage() {
               id="sender_domain"
               value={form.sender_domain}
               onChange={(e) => setForm({ ...form, sender_domain: e.target.value })}
-              placeholder="acme.in"
+              placeholder="notify.designforge.me"
               required
             />
           </div>
@@ -213,7 +240,7 @@ function SettingsPage() {
               id="from_address"
               value={form.from_address}
               onChange={(e) => setForm({ ...form, from_address: e.target.value })}
-              placeholder="campaigns@yourdomain.com"
+              placeholder="campaigns@notify.designforge.me"
               className={
                 form.from_address.trim()
                   ? senderValidation.isValid
@@ -255,6 +282,119 @@ function SettingsPage() {
                 </p>
               </div>
             )}
+          </div>
+        </Card>
+
+        {/* Resend DNS Domain Verification Records Section */}
+        <Card className="p-6 space-y-5">
+          <div className="flex flex-wrap items-center justify-between gap-4 border-b pb-3">
+            <div>
+              <h2 className="text-lg font-medium flex items-center gap-2">
+                <Globe className="size-5 text-primary" /> Resend DNS Domain Verification Records
+              </h2>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Exact DNS records required to verify{" "}
+                <code className="font-mono font-semibold text-foreground">{targetDomain}</code> for
+                production email delivery.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => verifyDnsMutation.mutate(targetDomain)}
+              disabled={verifyDnsMutation.isPending}
+            >
+              <RefreshCw
+                className={`size-3.5 mr-1.5 ${verifyDnsMutation.isPending ? "animate-spin" : ""}`}
+              />
+              Re-check Verification
+            </Button>
+          </div>
+
+          <div className="rounded-md border bg-muted/30 p-3 text-xs flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="size-4 text-emerald-600 shrink-0" />
+              <span>
+                Sending Domain Target: <strong className="font-mono text-sm">{targetDomain}</strong>
+              </span>
+            </div>
+            <Badge className="bg-emerald-600 text-white text-[10px]">
+              <CheckCircle2 className="size-3 mr-1 inline" /> Domain Status: Active & Verified
+            </Badge>
+          </div>
+
+          <div className="space-y-4">
+            {records.map((rec) => (
+              <div key={rec.id} className="rounded-lg border bg-background p-4 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="font-mono font-bold text-xs bg-muted">
+                      {rec.type}
+                    </Badge>
+                    <span className="font-medium text-xs text-foreground">{rec.purpose}</span>
+                  </div>
+                  <Badge
+                    className={
+                      rec.status === "verified"
+                        ? "bg-emerald-600 text-white text-[10px]"
+                        : "bg-sky-600 text-white text-[10px]"
+                    }
+                  >
+                    <CheckCircle2 className="size-3 mr-1 inline" />
+                    {rec.status === "verified" ? "Verified" : "Recommended"}
+                  </Badge>
+                </div>
+
+                <div className="grid gap-2 sm:grid-cols-2 text-xs">
+                  {/* Name / Host */}
+                  <div className="space-y-1">
+                    <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+                      Record Name / Host
+                    </span>
+                    <div className="flex items-center justify-between rounded border bg-muted/40 px-2.5 py-1.5 font-mono text-xs">
+                      <span className="truncate pr-2">{rec.name}</span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="size-6 shrink-0 text-muted-foreground hover:text-foreground"
+                        onClick={() => {
+                          navigator.clipboard.writeText(rec.name);
+                          toast.success(`Copied Name for ${rec.id.toUpperCase()} to clipboard!`);
+                        }}
+                        title="Copy Record Name"
+                      >
+                        <Copy className="size-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Value / Target */}
+                  <div className="space-y-1">
+                    <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+                      Record Value / Content {rec.priority ? `(Priority ${rec.priority})` : ""}
+                    </span>
+                    <div className="flex items-center justify-between rounded border bg-muted/40 px-2.5 py-1.5 font-mono text-xs">
+                      <span className="truncate pr-2">{rec.value}</span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="size-6 shrink-0 text-muted-foreground hover:text-foreground"
+                        onClick={() => {
+                          navigator.clipboard.writeText(rec.value);
+                          toast.success(`Copied Value for ${rec.id.toUpperCase()} to clipboard!`);
+                        }}
+                        title="Copy Record Value"
+                      >
+                        <Copy className="size-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </Card>
 

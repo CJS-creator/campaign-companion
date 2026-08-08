@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
+import { EmailDeliveryMonitorView } from "@/components/EmailDeliveryMonitorView";
 
 export const Route = createFileRoute("/events")({
   head: () => ({
@@ -262,6 +263,8 @@ function EventsPage() {
           </ul>
         )}
       </Card>
+
+      <EmailDeliveryMonitorView />
     </div>
   );
 }

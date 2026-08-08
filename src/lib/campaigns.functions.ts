@@ -386,6 +386,10 @@ export async function runQueueWorker(targetCampaignId?: string, origin?: string)
         .from("campaigns")
         .update({ status: "completed", sent_at: new Date().toISOString() })
         .eq("id", cid);
+
+      sendCampaignCompletionNotification(cid, defaultOrigin).catch((err) => {
+        console.error("Worker error sending completion notification:", err);
+      });
     }
   }
 }
@@ -1035,3 +1039,303 @@ export const rescheduleCampaign = createServerFn({ method: "POST" })
 
     return { success: true, scheduledFor: newDate.toISOString() };
   });
+
+export async function sendCampaignCompletionNotification(campaignId: string, origin?: string) {
+  const apiKey = process.env["RESEND_API_KEY"];
+  if (!apiKey) return;
+
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+  const { data: campaign } = await supabaseAdmin
+    .from("campaigns")
+    .select("*")
+    .eq("id", campaignId)
+    .maybeSingle();
+  if (!campaign) return;
+
+  const { data: settings } = await supabaseAdmin
+    .from("settings")
+    .select("*")
+    .eq("id", "default")
+    .maybeSingle();
+
+  const fromAddress = (settings?.from_address ?? "").trim();
+  const supportEmail = (settings?.support_email ?? "").trim();
+  const businessName = settings?.business_name || "Campaign Companion";
+  const postalAddress =
+    settings?.postal_address || "123 Business Street, Tech Park, Mumbai, MH 400050, India";
+
+  if (!isVerifiedSenderAddress(fromAddress) || !supportEmail) return;
+
+  const { data: sends } = await supabaseAdmin
+    .from("sends")
+    .select("status")
+    .eq("campaign_id", campaignId);
+
+  const totalSends = sends?.length || 0;
+  const sentCount = sends?.filter((s) => s.status === "sent").length || 0;
+  const failedCount = sends?.filter((s) => s.status === "failed").length || 0;
+
+  const appOrigin = origin || "http://localhost:3000";
+  const campaignUrl = `${appOrigin}/campaigns/${campaignId}`;
+
+  const html = `
+  <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;border:1px solid #e5e7eb;border-radius:12px;background-color:#ffffff;color:#1f2937;">
+    <div style="background-color:#ecfdf5;border:1px solid #a7f3d0;padding:16px 20px;border-radius:8px;margin-bottom:24px;">
+      <h2 style="color:#065f46;margin:0 0 6px 0;font-size:20px;font-weight:700;">🎉 Campaign Delivery Complete</h2>
+      <p style="color:#047857;margin:0;font-size:14px;">Your marketing email campaign has been fully processed and dispatched by the delivery queue.</p>
+    </div>
+
+    <table style="width:100%;border-collapse:collapse;margin-bottom:24px;font-size:14px;line-height:1.6;">
+      <tr style="border-b:1px solid #f3f4f6;">
+        <td style="padding:10px 0;color:#6b7280;width:35%;font-weight:500;">Campaign Subject:</td>
+        <td style="padding:10px 0;color:#111827;font-weight:700;">${campaign.subject}</td>
+      </tr>
+      <tr style="border-b:1px solid #f3f4f6;">
+        <td style="padding:10px 0;color:#6b7280;">Emails Delivered:</td>
+        <td style="padding:10px 0;color:#059669;font-weight:700;">${sentCount} of ${totalSends} recipients</td>
+      </tr>
+      ${
+        failedCount > 0
+          ? `
+      <tr style="border-b:1px solid #f3f4f6;">
+        <td style="padding:10px 0;color:#6b7280;">Failed Attempts:</td>
+        <td style="padding:10px 0;color:#dc2626;font-weight:700;">${failedCount} recipients</td>
+      </tr>
+      `
+          : ""
+      }
+      <tr>
+        <td style="padding:10px 0;color:#6b7280;">Completion Time:</td>
+        <td style="padding:10px 0;color:#111827;">${new Date().toLocaleString()}</td>
+      </tr>
+    </table>
+
+    <div style="text-align:center;margin:32px 0 24px 0;">
+      <a href="${campaignUrl}" style="background-color:#2563eb;color:#ffffff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;display:inline-block;box-shadow:0 1px 3px rgba(0,0,0,0.1);">View Campaign Analytics Dashboard &rarr;</a>
+    </div>
+
+    <div style="margin-top:32px;padding-top:16px;border-top:1px solid #e5e7eb;font-size:12px;color:#6b7280;text-align:center;line-height:1.5;">
+      <p>Automated confirmation sent by <strong>${businessName}</strong> · ${postalAddress}</p>
+    </div>
+  </div>
+  `;
+
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        from: fromAddress,
+        to: [supportEmail],
+        subject: `🎉 Campaign Sent Confirmation: "${campaign.subject}"`,
+        html,
+      }),
+    });
+
+    if (res.ok) {
+      await supabaseAdmin.from("audit_logs").insert({
+        action: "campaign_sent_confirmation_delivered",
+        details: { campaignId, supportEmail, sentCount, failedCount },
+      });
+    }
+  } catch (err) {
+    console.error("Error dispatching campaign completion confirmation email:", err);
+  }
+}
+
+const contactFormInput = z.object({
+  name: z.string().trim().min(1, "Name is required").max(100),
+  email: z.string().trim().email("Valid email required").max(255),
+  subject: z.string().trim().min(1, "Subject is required").max(200),
+  message: z.string().trim().min(1, "Message is required").max(2000),
+});
+
+export const submitContactForm = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => contactFormInput.parse(data))
+  .handler(async ({ data }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    // Upsert or create lead from contact submission
+    const { data: existingLead } = await supabaseAdmin
+      .from("leads")
+      .select("id")
+      .eq("email", data.email.toLowerCase())
+      .maybeSingle();
+
+    if (!existingLead) {
+      await supabaseAdmin.from("leads").insert({
+        email: data.email.toLowerCase(),
+        name: data.name,
+        consent_source: "contact_form",
+        consent_date: new Date().toISOString(),
+        consent_note: `Submitted contact form message: "${data.subject}"`,
+        subscribed: true,
+      });
+    }
+
+    await supabaseAdmin.from("audit_logs").insert({
+      action: "contact_form_submitted",
+      details: { name: data.name, email: data.email, subject: data.subject },
+    });
+
+    const apiKey = process.env["RESEND_API_KEY"];
+    const { data: settings } = await supabaseAdmin
+      .from("settings")
+      .select("*")
+      .eq("id", "default")
+      .maybeSingle();
+
+    const fromAddress = (settings?.from_address ?? "").trim();
+    const supportEmail = (settings?.support_email ?? "").trim();
+    const businessName = settings?.business_name || "Campaign Companion";
+    const postalAddress =
+      settings?.postal_address || "123 Business Street, Tech Park, Mumbai, MH 400050, India";
+
+    let notificationSent = false;
+    let autoReplySent = false;
+
+    if (apiKey && isVerifiedSenderAddress(fromAddress) && supportEmail) {
+      // 1. Send Notification Email to Owner
+      const notificationHtml = `
+      <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;border:1px solid #e5e7eb;border-radius:12px;background-color:#ffffff;color:#1f2937;">
+        <div style="background-color:#eff6ff;border:1px solid #bfdbfe;padding:14px 18px;border-radius:8px;margin-bottom:20px;">
+          <h2 style="color:#1e40af;margin:0 0 4px 0;font-size:18px;font-weight:700;">📬 New Contact Form Message Received</h2>
+          <p style="color:#1d4ed8;margin:0;font-size:13px;">A new message was submitted via your application contact form.</p>
+        </div>
+
+        <div style="background-color:#f9fafb;border:1px solid #e5e7eb;padding:16px;border-radius:8px;margin-bottom:20px;font-size:14px;line-height:1.6;">
+          <p style="margin:4px 0;"><strong>Sender Name:</strong> ${data.name}</p>
+          <p style="margin:4px 0;"><strong>Sender Email:</strong> <a href="mailto:${data.email}" style="color:#2563eb;">${data.email}</a></p>
+          <p style="margin:4px 0;"><strong>Subject:</strong> ${data.subject}</p>
+          <p style="margin:4px 0;"><strong>Received At:</strong> ${new Date().toLocaleString()}</p>
+        </div>
+
+        <div style="background-color:#ffffff;border:1px solid #e5e7eb;padding:18px;border-radius:8px;margin-bottom:24px;">
+          <h4 style="margin:0 0 10px 0;color:#374151;font-size:14px;text-transform:uppercase;letter-spacing:0.05em;">Message Body:</h4>
+          <p style="white-space:pre-wrap;color:#1f2937;margin:0;font-size:14px;line-height:1.6;">${data.message}</p>
+        </div>
+
+        <div style="text-align:center;margin-bottom:24px;">
+          <a href="mailto:${data.email}?subject=Re: ${encodeURIComponent(data.subject)}" style="background-color:#2563eb;color:#ffffff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600;font-size:14px;display:inline-block;">Reply Direct to ${data.email}</a>
+        </div>
+
+        <div style="margin-top:24px;padding-top:14px;border-top:1px solid #e5e7eb;font-size:12px;color:#6b7280;text-align:center;">
+          <p>Sent by <strong>${businessName}</strong> · ${postalAddress}</p>
+        </div>
+      </div>
+      `;
+
+      try {
+        const notifRes = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            from: fromAddress,
+            to: [supportEmail],
+            replyTo: data.email,
+            subject: `📬 Contact Form Submission: "${data.subject}" from ${data.name}`,
+            html: notificationHtml,
+          }),
+        });
+        notificationSent = notifRes.ok;
+      } catch (e) {
+        console.error("Failed to send contact notification email:", e);
+      }
+
+      // 2. Send Confirmation Auto-Reply Email to Visitor
+      const autoReplyHtml = `
+      <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;border:1px solid #e5e7eb;border-radius:12px;background-color:#ffffff;color:#1f2937;">
+        <h2 style="color:#111827;margin:0 0 12px 0;font-size:20px;">Thank you for reaching out, ${data.name}!</h2>
+        <p style="color:#4b5563;font-size:14px;line-height:1.6;">
+          We received your message regarding "<strong>${data.subject}</strong>". Our support team has been notified and will review your inquiry shortly.
+        </p>
+
+        <div style="background-color:#f9fafb;border:1px solid #e5e7eb;padding:16px;border-radius:8px;margin:20px 0;font-size:13px;color:#374151;">
+          <p style="margin:0 0 6px 0;font-weight:600;color:#111827;">Your Submitted Message:</p>
+          <p style="white-space:pre-wrap;margin:0;color:#4b5563;line-height:1.5;">${data.message}</p>
+        </div>
+
+        <p style="color:#6b7280;font-size:12px;margin-top:28px;border-top:1px solid #e5e7eb;padding-top:14px;text-align:center;">
+          Sent by <strong>${businessName}</strong> · ${postalAddress}<br/>
+          If you did not submit this request, you can safely ignore this email.
+        </p>
+      </div>
+      `;
+
+      try {
+        const replyRes = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            from: fromAddress,
+            to: [data.email],
+            subject: `We received your message — ${businessName}`,
+            html: autoReplyHtml,
+          }),
+        });
+        autoReplySent = replyRes.ok;
+      } catch (e) {
+        console.error("Failed to send contact auto-reply email:", e);
+      }
+    }
+
+    return {
+      success: true,
+      name: data.name,
+      email: data.email,
+      notificationSent,
+      autoReplySent,
+    };
+  });
+
+export const fetchDeliveryMonitorData = createServerFn({ method: "GET" }).handler(async () => {
+  const { assertOwner } = await import("./owner-guard.server");
+  assertOwner();
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+  const { data: sends, error } = await supabaseAdmin
+    .from("sends")
+    .select(
+      "id, campaign_id, lead_id, status, attempt_count, last_attempt_at, sent_at, failure_reason, provider_message_id, created_at",
+    )
+    .order("last_attempt_at", { ascending: false, nullsFirst: false })
+    .limit(200);
+
+  if (error) throw new Error(error.message);
+
+  const campaignIds = Array.from(new Set((sends ?? []).map((s) => s.campaign_id).filter(Boolean)));
+  const leadIds = Array.from(new Set((sends ?? []).map((s) => s.lead_id).filter(Boolean)));
+
+  const { data: campaigns } = await supabaseAdmin
+    .from("campaigns")
+    .select("id, subject")
+    .in("id", campaignIds.length ? campaignIds : ["00000000-0000-0000-0000-000000000000"]);
+
+  const { data: leads } = await supabaseAdmin
+    .from("leads")
+    .select("id, email, name")
+    .in("id", leadIds.length ? leadIds : ["00000000-0000-0000-0000-000000000000"]);
+
+  const campaignMap = new Map((campaigns ?? []).map((c) => [c.id, c.subject]));
+  const leadMap = new Map((leads ?? []).map((l) => [l.id, l]));
+
+  return (sends ?? []).map((s) => {
+    const lead = leadMap.get(s.lead_id);
+    return {
+      ...s,
+      campaign_subject: campaignMap.get(s.campaign_id) || "Unknown Campaign",
+      lead_email: lead?.email || "Unknown Lead",
+      lead_name: lead?.name || null,
+    };
+  });
+});
