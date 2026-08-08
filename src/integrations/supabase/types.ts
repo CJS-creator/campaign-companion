@@ -326,6 +326,7 @@ export type Database = {
           status: string
         }[]
       }
+      verify_worker_key: { Args: { p_key: string }; Returns: boolean }
     }
     Enums: {
       [_ in never]: never
