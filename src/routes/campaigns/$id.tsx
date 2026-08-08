@@ -31,6 +31,8 @@ import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { getSettings } from "@/lib/settings.functions";
+import { isVerifiedSenderAddress } from "@/lib/sender";
 import { SendTestEmailDialog } from "@/components/SendTestEmailDialog";
 import { CheckSendingOptionDialog } from "@/components/CheckSendingOptionDialog";
 
@@ -68,6 +70,8 @@ function CampaignDetail() {
   });
 
   const { data: leads = [] } = useQuery(leadsQuery);
+  const { data: ownerSettings } = useQuery({ queryKey: ["settings"], queryFn: () => getSettings() });
+  const senderVerified = isVerifiedSenderAddress(ownerSettings?.from_address ?? "");
 
   const retryAllMutation = useMutation({
     mutationFn: () => retryFailedSends({ data: { campaignId: id } }),
@@ -194,8 +198,21 @@ function CampaignDetail() {
         </div>
 
         <div className="flex flex-wrap gap-2">
+          {!senderVerified && (
+            <div className="w-full rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700">
+              No verified sender address is configured, so sending is disabled.{" "}
+              <Link to="/settings" className="font-medium underline underline-offset-2">
+                Add it in Settings
+              </Link>
+              .
+            </div>
+          )}
           <CheckSendingOptionDialog campaignId={campaign.id} />
-          <SendTestEmailDialog campaignId={campaign.id} campaignSubject={campaign.subject} />
+          <SendTestEmailDialog
+            campaignId={campaign.id}
+            campaignSubject={campaign.subject}
+            senderVerified={senderVerified}
+          />
 
           <Button asChild variant="outline">
             <Link to="/campaigns/new" search={{ clone: campaign.id }}>
@@ -273,7 +290,7 @@ function CampaignDetail() {
                 variant="outline"
                 className="border-purple-300 text-purple-800 hover:bg-purple-100"
                 onClick={() => sendNowMutation.mutate()}
-                disabled={sendNowMutation.isPending}
+                disabled={sendNowMutation.isPending || !senderVerified}
               >
                 <Play className="size-3.5 mr-1" /> Send Immediately
               </Button>
