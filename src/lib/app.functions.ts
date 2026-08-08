@@ -2,19 +2,19 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import type { Campaign, EventRow, Lead, Send } from "./types";
 
-/** All data access runs server-side with the owner session enforced. */
+/** All data access runs server-side with user session enforced. */
 async function guard() {
   const { assertOwner } = await import("./owner-guard.server");
-  assertOwner();
+  const user = await assertOwner();
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-  return supabaseAdmin;
+  return { db: supabaseAdmin, user };
 }
 
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
-async function audit(action: string, details: Record<string, JsonValue>) {
+async function audit(userId: string, action: string, details: Record<string, JsonValue>) {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-  await supabaseAdmin.from("audit_logs").insert({ action, details });
+  await supabaseAdmin.from("audit_logs").insert({ user_id: userId, action, details });
 }
 
 export const LEADS_PAGE_SIZE = 25;
@@ -37,8 +37,9 @@ function escapeSearch(value: string) {
 /* ------------------------------- session -------------------------------- */
 
 export const getSessionStatus = createServerFn({ method: "GET" }).handler(async () => {
-  const { isOwnerRequest } = await import("./owner-guard.server");
-  return { authenticated: isOwnerRequest() };
+  const { getAuthenticatedUser } = await import("./auth.server");
+  const user = await getAuthenticatedUser();
+  return { authenticated: Boolean(user), user: user || null };
 });
 
 /* --------------------------------- leads -------------------------------- */
@@ -54,10 +55,10 @@ export const fetchLeadsPage = createServerFn({ method: "GET" })
       .parse(data),
   )
   .handler(async ({ data }): Promise<{ leads: Lead[]; count: number }> => {
-    const db = await guard();
+    const { db, user } = await guard();
     const search = escapeSearch(data.search);
     const { column, ascending } = sortColumns[data.sort];
-    let query = db.from("leads").select("*", { count: "exact" });
+    let query = db.from("leads").select("*", { count: "exact" }).or(`user_id.eq.${user.userId},user_id.is.null`);
     if (search) query = query.or(`email.ilike.%${search}%,name.ilike.%${search}%`);
     const {
       data: rows,
@@ -79,9 +80,9 @@ export const fetchLeads = createServerFn({ method: "GET" })
         .parse(data) ?? { search: "" },
   )
   .handler(async ({ data }): Promise<Lead[]> => {
-    const db = await guard();
+    const { db, user } = await guard();
     const search = escapeSearch(data.search ?? "");
-    let query = db.from("leads").select("*").order("created_at", { ascending: false });
+    let query = db.from("leads").select("*").or(`user_id.eq.${user.userId},user_id.is.null`).order("created_at", { ascending: false });
     if (search) query = query.or(`email.ilike.%${search}%,name.ilike.%${search}%`);
     const { data: rows, error } = await query;
     if (error) throw new Error(error.message);
@@ -98,21 +99,22 @@ export const createLead = createServerFn({ method: "POST" })
       .parse(data),
   )
   .handler(async ({ data }) => {
-    const db = await guard();
+    const { db, user } = await guard();
     const email = data.email.toLowerCase();
     const now = new Date().toISOString();
     const { error } = await db.from("leads").insert({
+      user_id: user.userId,
       email,
       name: data.name || null,
       consent_source: "manual",
       consent_date: now,
-      consent_note: "Added manually by the owner",
+      consent_note: "Added manually by user",
     });
     if (error)
       throw new Error(
-        error.code === "23505" ? "That email is already on the list." : error.message,
+        error.code === "23505" ? "That email is already on your list." : error.message,
       );
-    await audit("lead_added", { email, source: "manual" });
+    await audit(user.userId, "lead_added", { email, source: "manual" });
     return { ok: true };
   });
 
@@ -123,18 +125,18 @@ export const setLeadSubscription = createServerFn({ method: "POST" })
       .parse(data),
   )
   .handler(async ({ data }) => {
-    const db = await guard();
+    const { db, user } = await guard();
     const { error } = await db
       .from("leads")
       .update({
         subscribed: data.subscribed,
         suppression_status: data.subscribed ? "active" : "unsubscribed",
-        suppression_reason: data.subscribed ? null : "Owner action",
+        suppression_reason: data.subscribed ? null : "User action",
         suppressed_at: data.subscribed ? null : new Date().toISOString(),
       })
       .in("id", data.ids);
     if (error) throw new Error(error.message);
-    await audit(data.subscribed ? "lead_resubscribed" : "lead_unsubscribed", {
+    await audit(user.userId, data.subscribed ? "lead_resubscribed" : "lead_unsubscribed", {
       count: data.ids.length,
     });
     return { ok: true, count: data.ids.length };
@@ -145,10 +147,10 @@ export const deleteLeads = createServerFn({ method: "POST" })
     z.object({ ids: z.array(z.string().uuid()).min(1).max(5000) }).parse(data),
   )
   .handler(async ({ data }) => {
-    const db = await guard();
+    const { db, user } = await guard();
     const { error } = await db.from("leads").delete().in("id", data.ids);
     if (error) throw new Error(error.message);
-    await audit("lead_deleted", { count: data.ids.length });
+    await audit(user.userId, "lead_deleted", { count: data.ids.length });
     return { ok: true, count: data.ids.length };
   });
 
@@ -172,7 +174,7 @@ export const previewLeadImport = createServerFn({ method: "POST" })
       .parse(data),
   )
   .handler(async ({ data }): Promise<LeadImportPreviewResult> => {
-    const db = await guard();
+    const { db, user } = await guard();
     const emailSchema = z.string().trim().email().max(255);
 
     const validRows: Array<{ rowNum: number; email: string; name: string | null }> = [];
@@ -265,7 +267,7 @@ export const importLeads = createServerFn({ method: "POST" })
       .parse(data),
   )
   .handler(async ({ data }) => {
-    const db = await guard();
+    const { db, user } = await guard();
     const rows = data.rows.map((row) => ({
       email: row.email.toLowerCase(),
       name: row.name || null,
@@ -288,6 +290,7 @@ export const importLeads = createServerFn({ method: "POST" })
     for (let i = 0; i < fresh.length; i += 200) {
       const chunk = fresh.slice(i, i + 200).map((row) => ({
         ...row,
+        user_id: user.userId,
         consent_source: "import",
         consent_date: importedAt,
         consent_note: `Bulk spreadsheet import on ${importedAt}`,
@@ -296,7 +299,7 @@ export const importLeads = createServerFn({ method: "POST" })
       if (error) throw new Error(error.message);
       added += chunk.length;
     }
-    await audit("leads_imported", { added, duplicates: rows.length - fresh.length });
+    await audit(user.userId, "leads_imported", { added, duplicates: rows.length - fresh.length });
     return { added, duplicates: rows.length - fresh.length };
   });
 
@@ -304,10 +307,11 @@ export const importLeads = createServerFn({ method: "POST" })
 
 export const fetchCampaigns = createServerFn({ method: "GET" }).handler(
   async (): Promise<Campaign[]> => {
-    const db = await guard();
+    const { db, user } = await guard();
     const { data, error } = await db
       .from("campaigns")
       .select("*")
+      .or(`user_id.eq.${user.userId},user_id.is.null`)
       .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
     return (data ?? []) as Campaign[];
@@ -317,7 +321,7 @@ export const fetchCampaigns = createServerFn({ method: "GET" }).handler(
 export const fetchCampaign = createServerFn({ method: "GET" })
   .inputValidator((data: unknown) => z.object({ id: z.string().uuid() }).parse(data))
   .handler(async ({ data }): Promise<Campaign | null> => {
-    const db = await guard();
+    const { db, user } = await guard();
     const { data: row, error } = await db
       .from("campaigns")
       .select("*")
@@ -328,8 +332,8 @@ export const fetchCampaign = createServerFn({ method: "GET" })
   });
 
 export const fetchSends = createServerFn({ method: "GET" }).handler(async (): Promise<Send[]> => {
-  const db = await guard();
-  const { data, error } = await db.from("sends").select("*");
+  const { db, user } = await guard();
+  const { data, error } = await db.from("sends").select("*").or(`user_id.eq.${user.userId},user_id.is.null`);
   if (error) throw new Error(error.message);
   return (data ?? []) as Send[];
 });
@@ -345,7 +349,7 @@ export const createCampaign = createServerFn({ method: "POST" })
       .parse(data),
   )
   .handler(async ({ data }) => {
-    const db = await guard();
+    const { db, user } = await guard();
     const plainText = data.bodyHtml
       .replace(/<[^>]+>/g, " ")
       .replace(/\s+/g, " ")
@@ -353,6 +357,7 @@ export const createCampaign = createServerFn({ method: "POST" })
     const { data: row, error } = await db
       .from("campaigns")
       .insert({
+        user_id: user.userId,
         subject: data.subject,
         body_html: data.bodyHtml,
         body_text: plainText,
@@ -361,7 +366,7 @@ export const createCampaign = createServerFn({ method: "POST" })
       .select("id")
       .single();
     if (error) throw new Error(error.message);
-    await audit("campaign_created", { campaign_id: row.id, subject: data.subject });
+    await audit(user.userId, "campaign_created", { campaign_id: row.id, subject: data.subject });
     return { id: row.id as string };
   });
 
@@ -379,12 +384,13 @@ const eventFilters = z.object({
 export const fetchEvents = createServerFn({ method: "GET" })
   .inputValidator((data: unknown) => eventFilters.parse(data ?? {}))
   .handler(async ({ data }): Promise<EventRow[]> => {
-    const db = await guard();
+    const { db, user } = await guard();
     let query = db
       .from("events")
       .select(
         "id, event_type, reason, created_at, send_id, campaign_id, lead_id, leads(email), campaigns(subject)",
       )
+      .or(`user_id.eq.${user.userId},user_id.is.null`)
       .order("created_at", { ascending: false })
       .limit(data.limit);
 
@@ -429,10 +435,11 @@ export const fetchAuditLogs = createServerFn({ method: "GET" })
     z.object({ limit: z.number().int().min(1).max(1000).default(200) }).parse(data ?? {}),
   )
   .handler(async ({ data }) => {
-    const db = await guard();
+    const { db, user } = await guard();
     const { data: rows, error } = await db
       .from("audit_logs")
       .select("*")
+      .or(`user_id.eq.${user.userId},user_id.is.null`)
       .order("created_at", { ascending: false })
       .limit(data.limit);
     if (error) throw new Error(error.message);

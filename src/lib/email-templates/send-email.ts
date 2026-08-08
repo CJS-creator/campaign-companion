@@ -82,7 +82,10 @@ export async function sendTemplateEmail(
       { apiKey, sendUrl: process.env['LOVABLE_SEND_URL'] }
     )
   } catch (error) {
-    if (error instanceof EmailAPIError && error.code === 'recipient_suppressed') {
+    if (
+      (error instanceof EmailAPIError || (error && typeof error === 'object' && 'code' in error)) &&
+      (error as { code?: string }).code === 'recipient_suppressed'
+    ) {
       return { sent: false, reason: 'recipient_suppressed' }
     }
     throw error

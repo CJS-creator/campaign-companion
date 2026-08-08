@@ -1,17 +1,16 @@
 import { getRequest } from "@tanstack/react-start/server";
-import { isRequestAuthenticated } from "./auth.server";
+import { getAuthenticatedUser, requireUserAuth, type UserSession } from "./auth.server";
 
-/** Throws unless the incoming request carries a valid signed owner session cookie. */
-export function assertOwner(): void {
+/** Asserts that the incoming request carries a valid Supabase user session token. */
+export async function assertOwner(): Promise<UserSession> {
   const request = getRequest();
-  if (!isRequestAuthenticated(request)) {
-    throw new Error("Unauthorized: Owner login required.");
-  }
+  return requireUserAuth(request);
 }
 
-export function isOwnerRequest(): boolean {
+export async function isOwnerRequest(): Promise<boolean> {
   try {
-    return isRequestAuthenticated(getRequest());
+    const user = await getAuthenticatedUser(getRequest());
+    return Boolean(user);
   } catch {
     return false;
   }

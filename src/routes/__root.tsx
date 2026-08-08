@@ -8,9 +8,14 @@ import {
   useRouter,
   HeadContent,
   Scripts,
+  useLocation,
 } from "@tanstack/react-router";
 import { getSessionStatus } from "../lib/app.functions";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import type { User } from "@supabase/supabase-js";
+import { supabase } from "@/integrations/supabase/client";
+import { signOutUser } from "@/lib/auth";
+import { User as UserIcon, LogOut, Settings as SettingsIcon } from "lucide-react";
 
 import appCss from "../styles.css?url";
 import { Toaster } from "../components/ui/sonner";
@@ -104,7 +109,12 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   }),
   beforeLoad: async ({ location }) => {
     if (location.pathname.startsWith("/lovable/")) return;
-    if (location.pathname.startsWith("/login") || location.pathname.startsWith("/track")) return;
+    if (
+      location.pathname.startsWith("/login") ||
+      location.pathname.startsWith("/auth/") ||
+      location.pathname.startsWith("/track")
+    )
+      return;
 
     const { authenticated } = await getSessionStatus();
     if (!authenticated) throw redirect({ to: "/login" });
@@ -143,12 +153,34 @@ function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   const router = useRouter();
   const navigate = useNavigate();
+  const location = useLocation();
 
-  const signOut = async () => {
+  const [user, setUser] = useState<User | null>(null);
+  const isAuthRoute =
+    location.pathname.startsWith("/login") ||
+    location.pathname.startsWith("/auth/") ||
+    location.pathname.startsWith("/track/");
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      setUser(data.user ?? null);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  const handleSignOut = async () => {
     await queryClient.cancelQueries();
     queryClient.clear();
-    const { logoutServerFn } = await import("./login");
-    await logoutServerFn();
+    await signOutUser();
     await router.invalidate();
     navigate({ to: "/login", replace: true });
   };
@@ -156,35 +188,59 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <div className="min-h-screen bg-background">
-        <header className="border-b border-border">
-          <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-6 px-6 py-4">
-            <Link to="/" className="text-sm font-semibold tracking-tight">
-              Postmark Studio
-            </Link>
-            <nav className="flex items-center gap-1 text-sm">
-              {navItems.map((item) => (
-                <Link
-                  key={item.to}
-                  to={item.to}
-                  activeOptions={{ exact: item.to === "/" }}
-                  className="rounded-md px-3 py-1.5 text-muted-foreground transition-colors hover:text-foreground"
-                  activeProps={{ className: "bg-secondary text-foreground" }}
-                >
-                  {item.label}
-                </Link>
-              ))}
-            </nav>
-            <button
-              type="button"
-              onClick={signOut}
-              className="ml-auto rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
-            >
-              Sign out
-            </button>
-          </div>
-        </header>
-        <main className="mx-auto max-w-5xl px-6 py-10">
-          {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
+        {!isAuthRoute && (
+          <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-40">
+            <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-6 px-6 py-3.5">
+              <Link to="/" className="text-sm font-bold tracking-tight text-foreground flex items-center gap-2">
+                <span className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground font-semibold text-xs">
+                  PS
+                </span>
+                Postmark Studio
+              </Link>
+
+              <nav className="flex items-center gap-1 text-sm">
+                {navItems.map((item) => (
+                  <Link
+                    key={item.to}
+                    to={item.to}
+                    activeOptions={{ exact: item.to === "/" }}
+                    className="rounded-md px-3 py-1.5 text-muted-foreground transition-colors hover:text-foreground hover:bg-muted/50"
+                    activeProps={{ className: "bg-secondary text-foreground font-medium" }}
+                  >
+                    {item.label}
+                  </Link>
+                ))}
+              </nav>
+
+              <div className="ml-auto flex items-center gap-3">
+                {user ? (
+                  <div className="flex items-center gap-3 bg-muted/40 pl-3 pr-2 py-1 rounded-full border border-border">
+                    <span className="text-xs font-medium text-foreground max-w-[160px] truncate">
+                      {user.user_metadata?.["full_name"] || user.email}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleSignOut}
+                      title="Sign out"
+                      className="flex size-7 items-center justify-center rounded-full bg-secondary text-muted-foreground transition-colors hover:text-destructive hover:bg-destructive/10"
+                    >
+                      <LogOut className="size-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <Link
+                    to="/login"
+                    className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+                  >
+                    Sign In
+                  </Link>
+                )}
+              </div>
+            </div>
+          </header>
+        )}
+
+        <main className="mx-auto max-w-5xl px-6 py-8">
           <Outlet />
         </main>
       </div>

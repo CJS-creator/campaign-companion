@@ -1,5 +1,6 @@
 export interface Lead {
   id: string;
+  user_id?: string | null;
   email: string;
   name: string | null;
   subscribed: boolean;
@@ -13,6 +14,7 @@ export interface Lead {
 
 export interface Campaign {
   id: string;
+  user_id?: string | null;
   subject: string;
   body_html: string;
   offer_url: string | null;
@@ -26,6 +28,7 @@ export interface Campaign {
 export interface Send {
   attempt_count: number;
   id: string;
+  user_id?: string | null;
   campaign_id: string;
   lead_id: string;
   status: "queued" | "sending" | "sent" | "failed" | "skipped";
@@ -38,6 +41,7 @@ export interface Send {
 
 export interface EventRow {
   id: string;
+  user_id?: string | null;
   event_type: string;
   reason: string | null;
   created_at: string;
