@@ -484,6 +484,37 @@ export const sendCampaign = createServerFn({ method: "POST" })
     if (leadsError) throw new Error(leadsError.message);
     if (!leads || leads.length === 0) throw new Error("No eligible subscribed leads to send to.");
 
+    // Sending caps: refuse to queue a run the caps cannot deliver today.
+    if (sendSettings?.enforce_caps ?? true) {
+      const dailyCap = sendSettings?.daily_cap ?? 100;
+      const monthlyCap = sendSettings?.monthly_cap ?? 3000;
+      const now = new Date();
+      const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+      const usedSince = async (since: string) => {
+        const { count } = await supabaseAdmin
+          .from("sends")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "sent")
+          .gte("sent_at", since);
+        return count ?? 0;
+      };
+      const remainingToday = dailyCap - (await usedSince(dayStart));
+      const remainingMonth = monthlyCap - (await usedSince(monthStart));
+      if (remainingToday <= 0 || remainingMonth <= 0) {
+        throw new Error(
+          `Sending cap reached (${remainingToday <= 0 ? "daily" : "monthly"}). Try again later or raise the cap in Settings.`,
+        );
+      }
+      if (leads.length > Math.min(remainingToday, remainingMonth)) {
+        throw new Error(
+          `This campaign targets ${leads.length} recipients but only ${Math.min(remainingToday, remainingMonth)} sends remain within your cap. Raise the cap in Settings or split the send.`,
+        );
+      }
+    }
+
+
+
     // Claim draft
     const { data: claimedCampaign, error: claimError } = await supabaseAdmin
       .from("campaigns")
