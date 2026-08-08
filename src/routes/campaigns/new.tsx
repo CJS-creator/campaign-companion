@@ -58,6 +58,8 @@ function ComposerPage() {
     queryFn: () => getSettings(),
   });
 
+  const senderVerified = isVerifiedSenderAddress(settings?.from_address ?? "");
+
   const { data: leads = [] } = useQuery(leadsQuery);
   const recipients = leads.filter((l) => l.subscribed).length;
 
@@ -280,6 +282,17 @@ function ComposerPage() {
             </div>
           )}
 
+          {!senderVerified && (
+            <div className="flex flex-wrap items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700">
+              <span>
+                No verified sender address is configured, so sending is disabled.
+              </span>
+              <Link to="/settings" className="font-medium underline underline-offset-2">
+                Add it in Settings
+              </Link>
+            </div>
+          )}
+
           <div className="flex flex-wrap items-center gap-3 pt-2">
             <Button
               variant="outline"
@@ -303,7 +316,8 @@ function ComposerPage() {
                   scheduleMutation.isPending ||
                   !scheduledFor ||
                   recipients === 0 ||
-                  !linkVerified
+                  !linkVerified ||
+                  !senderVerified
                 }
                 onClick={() => scheduleMutation.mutate()}
               >
@@ -317,7 +331,8 @@ function ComposerPage() {
                 draftMutation.isPending ||
                 scheduleMutation.isPending ||
                 recipients === 0 ||
-                !linkVerified
+                !linkVerified ||
+                !senderVerified
               }
               onClick={() => sendMutation.mutate()}
             >

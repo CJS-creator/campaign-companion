@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
+import { isVerifiedSenderAddress } from "@/lib/sender";
 
 export const Route = createFileRoute("/settings")({
   head: () => ({
@@ -67,6 +68,8 @@ function SettingsPage() {
       });
     }
   }, [settings]);
+
+  const senderVerified = isVerifiedSenderAddress(form.from_address);
 
   const updateMutation = useMutation({
     mutationFn: updateSettings,
