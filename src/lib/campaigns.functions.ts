@@ -533,7 +533,8 @@ export const scheduleCampaign = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => scheduleInput.parse(data))
   .handler(async ({ data }) => {
     const { assertOwner } = await import("./owner-guard.server");
-    await assertOwner();
+    const schedUser = await assertOwner();
+
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
@@ -558,6 +559,7 @@ export const scheduleCampaign = createServerFn({ method: "POST" })
       .from("leads")
       .select("id")
       .eq("subscribed", true)
+      .or(`user_id.eq.${schedUser.userId},user_id.is.null`)
       .or("suppression_status.is.null,suppression_status.eq.active");
 
     const recipientCount = leads?.length || 0;
@@ -568,7 +570,7 @@ export const scheduleCampaign = createServerFn({ method: "POST" })
         status: "scheduled",
         scheduled_for: data.scheduledFor,
         approved_at: new Date().toISOString(),
-        approved_by: "Owner",
+        approved_by: schedUser.email || "Owner",
         recipient_count: recipientCount,
       })
       .eq("id", data.campaignId);
@@ -582,6 +584,7 @@ export const scheduleCampaign = createServerFn({ method: "POST" })
         .eq("status", "queued");
       await supabaseAdmin.from("sends").insert(
         leads.map((lead) => ({
+          user_id: schedUser.userId,
           campaign_id: data.campaignId,
           lead_id: lead.id,
           status: "queued",
@@ -592,9 +595,11 @@ export const scheduleCampaign = createServerFn({ method: "POST" })
 
     // Audit log schedule
     await supabaseAdmin.from("audit_logs").insert({
+      user_id: schedUser.userId,
       action: "campaign_scheduled",
       details: { campaignId: data.campaignId, scheduledFor: data.scheduledFor, recipientCount },
     });
+
 
     return { scheduled: true, scheduledFor: data.scheduledFor };
   });
