@@ -28,7 +28,10 @@ const updateSettingsInput = z.object({
     .string()
     .trim()
     .max(255)
-    .refine((value) => /^(.+<)?[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+>?$/.test(value), "Enter a valid from address"),
+    .refine(
+      (value) => value === "" || isVerifiedSenderAddress(value),
+      "Enter a valid sender address on your verified domain (shared resend.dev addresses are not allowed)",
+    ),
   daily_cap: z.number().int().min(1).max(100000),
   monthly_cap: z.number().int().min(1).max(1000000),
   timezone: z.string().trim().min(1).max(64),
