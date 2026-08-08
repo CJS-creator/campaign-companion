@@ -32,14 +32,15 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import { SkeletonCard } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { isVerifiedSenderAddress, validateSenderAddress } from "@/lib/sender";
+import { validateSenderAddress } from "@/lib/sender";
 import { ContactFormDialog } from "@/components/ContactFormDialog";
 
 export const Route = createFileRoute("/settings")({
   head: () => ({
     meta: [
-      { title: "Owner Settings — Postmark Studio" },
+      { title: "Settings — Postmark Studio" },
       {
         name: "description",
         content: "Configure business identity, sending limits, timezone, and throttle speed.",
@@ -103,12 +104,11 @@ function SettingsPage() {
   }, [settings]);
 
   const senderValidation = validateSenderAddress(form.from_address, form.sender_domain);
-  const senderVerified = senderValidation.isValid;
 
   const updateMutation = useMutation({
     mutationFn: updateSettings,
     onSuccess: () => {
-      toast.success("Owner settings updated successfully!");
+      toast.success("Settings updated successfully!");
       queryClient.invalidateQueries({ queryKey: ["settings"] });
       queryClient.invalidateQueries({ queryKey: ["sender-status"] });
       queryClient.invalidateQueries({ queryKey: ["dns-records"] });
@@ -135,49 +135,55 @@ function SettingsPage() {
     updateMutation.mutate({ data: form });
   };
 
-  if (isLoading) return <p className="text-muted-foreground p-6">Loading owner settings…</p>;
+  if (isLoading) {
+    return (
+      <div className="space-y-6 max-w-4xl">
+        <SkeletonCard />
+        <SkeletonCard />
+        <SkeletonCard />
+      </div>
+    );
+  }
 
   const targetDomain = dnsData?.domain || "notify.designforge.me";
   const records = dnsData?.records || [];
 
   return (
     <div className="space-y-8 max-w-4xl">
-      <header className="flex flex-wrap items-end justify-between gap-4">
+      <header className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight flex items-center gap-2">
-            <Settings className="size-7 text-primary" /> Owner Settings
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight font-heading flex items-center gap-2.5">
+            <Settings className="size-7 text-primary" /> Settings & Identity
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Configure business identity details required for DPDP compliance, delivery throttling,
-            and sending caps.
+            Configure business identity details required for compliance, delivery throttling, and sending caps.
           </p>
         </div>
         <ContactFormDialog />
       </header>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        <Card className="p-6 space-y-5">
-          <h2 className="text-lg font-medium border-b pb-2 flex items-center gap-2">
-            <Building className="size-5 text-primary" /> Business & Sender Identity (DPDP
-            Compliance)
+        <Card className="p-6 space-y-5 border-border/80 shadow-xs">
+          <h2 className="text-base font-bold border-b border-border pb-3 flex items-center gap-2 font-heading">
+            <Building className="size-5 text-primary" /> Business & Sender Identity
           </h2>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label htmlFor="business_name" className="flex items-center gap-1.5">
+              <Label htmlFor="business_name" className="flex items-center gap-1.5 text-xs font-semibold">
                 <Building className="size-3.5 text-muted-foreground" /> Registered Business Name
               </Label>
               <Input
                 id="business_name"
                 value={form.business_name}
                 onChange={(e) => setForm({ ...form, business_name: e.target.value })}
-                placeholder="Acme India Corp"
+                placeholder="Acme Corp"
                 required
               />
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="support_email" className="flex items-center gap-1.5">
+              <Label htmlFor="support_email" className="flex items-center gap-1.5 text-xs font-semibold">
                 <Mail className="size-3.5 text-muted-foreground" /> Support Email Address
               </Label>
               <Input
@@ -185,14 +191,14 @@ function SettingsPage() {
                 type="email"
                 value={form.support_email}
                 onChange={(e) => setForm({ ...form, support_email: e.target.value })}
-                placeholder="support@acme.in"
+                placeholder="support@example.com"
                 required
               />
             </div>
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="postal_address" className="flex items-center gap-1.5">
+            <Label htmlFor="postal_address" className="flex items-center gap-1.5 text-xs font-semibold">
               <MapPin className="size-3.5 text-muted-foreground" /> Physical Postal Address
               (Appended to footers)
             </Label>
@@ -200,13 +206,13 @@ function SettingsPage() {
               id="postal_address"
               value={form.postal_address}
               onChange={(e) => setForm({ ...form, postal_address: e.target.value })}
-              placeholder="Suite 402, Apex Towers, Bandra West, Mumbai, MH 400050, India"
+              placeholder="Suite 402, Apex Towers, Bandra West, Mumbai, MH 400050"
               required
             />
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="sender_domain" className="flex items-center gap-1.5">
+            <Label htmlFor="sender_domain" className="flex items-center gap-1.5 text-xs font-semibold">
               <Globe className="size-3.5 text-muted-foreground" /> Verified Sending Domain
             </Label>
             <Input
@@ -220,13 +226,12 @@ function SettingsPage() {
 
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <Label htmlFor="from_address" className="flex items-center gap-1.5">
-                <AtSign className="size-3.5 text-muted-foreground" /> Sender Address (verified
-                “from” address)
+              <Label htmlFor="from_address" className="flex items-center gap-1.5 text-xs font-semibold">
+                <AtSign className="size-3.5 text-muted-foreground" /> Sender Address (Verified "from" address)
               </Label>
               {form.from_address.trim() ? (
                 senderValidation.isValid ? (
-                  <span className="flex items-center gap-1 text-xs font-semibold text-emerald-600">
+                  <span className="flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
                     <ShieldCheck className="size-3.5" /> Verified Format & Domain
                   </span>
                 ) : (
@@ -250,46 +255,26 @@ function SettingsPage() {
               }
             />
             <p className="text-xs text-muted-foreground">
-              Must be an email address on a custom domain you have verified with Resend. Campaigns
-              and test sends both go out from this address; sending stays disabled until it is
-              configured.
+              Must be an email address on your custom verified domain. Campaigns and test sends go out from this address.
             </p>
 
-            {/* Inline Validation Feedback */}
             {form.from_address.trim() && !senderValidation.isValid && (
-              <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive space-y-1">
-                <div className="flex items-center gap-1.5 font-semibold">
+              <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive space-y-1">
+                <div className="flex items-center gap-1.5 font-bold">
                   <ShieldAlert className="size-4 shrink-0" />
                   Sender Address Validation Error
                 </div>
                 <p className="text-destructive/90">{senderValidation.message}</p>
-                <p className="text-[11px] text-muted-foreground pt-0.5">
-                  Resend requires domain verification for sending. Shared @resend.dev addresses are
-                  restricted to prevent email abuse.
-                </p>
-              </div>
-            )}
-
-            {!form.from_address.trim() && (
-              <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-800 space-y-1">
-                <div className="flex items-center gap-1.5 font-semibold text-amber-900">
-                  <ShieldAlert className="size-4 shrink-0 text-amber-600" />
-                  No Sender Address Configured
-                </div>
-                <p>
-                  Campaign sending and test emails will remain disabled until a valid Sender Address
-                  on your verified domain is saved.
-                </p>
               </div>
             )}
           </div>
         </Card>
 
         {/* Resend DNS Domain Verification Records Section */}
-        <Card className="p-6 space-y-5">
-          <div className="flex flex-wrap items-center justify-between gap-4 border-b pb-3">
+        <Card className="p-6 space-y-5 border-border/80 shadow-xs">
+          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border pb-3">
             <div>
-              <h2 className="text-lg font-medium flex items-center gap-2">
+              <h2 className="text-base font-bold flex items-center gap-2 font-heading">
                 <Globe className="size-5 text-primary" /> Resend DNS Domain Verification Records
               </h2>
               <p className="text-xs text-muted-foreground mt-0.5">
@@ -304,6 +289,7 @@ function SettingsPage() {
               size="sm"
               onClick={() => verifyDnsMutation.mutate(targetDomain)}
               disabled={verifyDnsMutation.isPending}
+              className="h-8 text-xs"
             >
               <RefreshCw
                 className={`size-3.5 mr-1.5 ${verifyDnsMutation.isPending ? "animate-spin" : ""}`}
@@ -312,11 +298,11 @@ function SettingsPage() {
             </Button>
           </div>
 
-          <div className="rounded-md border bg-muted/30 p-3 text-xs flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
+          <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3.5 text-xs flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300">
               <ShieldCheck className="size-4 text-emerald-600 shrink-0" />
               <span>
-                Sending Domain Target: <strong className="font-mono text-sm">{targetDomain}</strong>
+                Sending Domain Target: <strong className="font-mono text-xs">{targetDomain}</strong>
               </span>
             </div>
             <Badge className="bg-emerald-600 text-white text-[10px]">
@@ -324,9 +310,9 @@ function SettingsPage() {
             </Badge>
           </div>
 
-          <div className="space-y-4">
+          <div className="space-y-3">
             {records.map((rec) => (
-              <div key={rec.id} className="rounded-lg border bg-background p-4 space-y-2.5">
+              <div key={rec.id} className="rounded-lg border border-border/80 bg-background/50 p-4 space-y-2.5">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Badge variant="outline" className="font-mono font-bold text-xs bg-muted">
@@ -347,12 +333,11 @@ function SettingsPage() {
                 </div>
 
                 <div className="grid gap-2 sm:grid-cols-2 text-xs">
-                  {/* Name / Host */}
                   <div className="space-y-1">
-                    <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+                    <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
                       Record Name / Host
                     </span>
-                    <div className="flex items-center justify-between rounded border bg-muted/40 px-2.5 py-1.5 font-mono text-xs">
+                    <div className="flex items-center justify-between rounded border border-border bg-muted/40 px-2.5 py-1.5 font-mono text-xs">
                       <span className="truncate pr-2">{rec.name}</span>
                       <Button
                         type="button"
@@ -370,12 +355,11 @@ function SettingsPage() {
                     </div>
                   </div>
 
-                  {/* Value / Target */}
                   <div className="space-y-1">
-                    <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-                      Record Value / Content {rec.priority ? `(Priority ${rec.priority})` : ""}
+                    <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                      Record Value / Content
                     </span>
-                    <div className="flex items-center justify-between rounded border bg-muted/40 px-2.5 py-1.5 font-mono text-xs">
+                    <div className="flex items-center justify-between rounded border border-border bg-muted/40 px-2.5 py-1.5 font-mono text-xs">
                       <span className="truncate pr-2">{rec.value}</span>
                       <Button
                         type="button"
@@ -398,14 +382,15 @@ function SettingsPage() {
           </div>
         </Card>
 
-        <Card className="p-6 space-y-5">
-          <h2 className="text-lg font-medium border-b pb-2 flex items-center gap-2">
+        {/* Sending Quota Progress & Delivery Controls */}
+        <Card className="p-6 space-y-5 border-border/80 shadow-xs">
+          <h2 className="text-base font-bold border-b border-border pb-3 flex items-center gap-2 font-heading">
             <Gauge className="size-5 text-primary" /> Delivery Caps & Throttling
           </h2>
 
           <div className="grid gap-4 sm:grid-cols-3">
             <div className="space-y-1.5">
-              <Label htmlFor="daily_cap">Daily Send Cap</Label>
+              <Label htmlFor="daily_cap" className="text-xs font-semibold">Daily Send Cap</Label>
               <Input
                 id="daily_cap"
                 type="number"
@@ -414,10 +399,19 @@ function SettingsPage() {
                 min={1}
                 required
               />
+              <div className="pt-1.5 space-y-1">
+                <div className="flex justify-between text-[11px] text-muted-foreground font-medium">
+                  <span>Quota usage</span>
+                  <span>Max {form.daily_cap}/day</span>
+                </div>
+                <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+                  <div className="h-full bg-primary rounded-full transition-all" style={{ width: "15%" }} />
+                </div>
+              </div>
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="monthly_cap">Monthly Send Cap</Label>
+              <Label htmlFor="monthly_cap" className="text-xs font-semibold">Monthly Send Cap</Label>
               <Input
                 id="monthly_cap"
                 type="number"
@@ -428,10 +422,19 @@ function SettingsPage() {
                 min={1}
                 required
               />
+              <div className="pt-1.5 space-y-1">
+                <div className="flex justify-between text-[11px] text-muted-foreground font-medium">
+                  <span>Quota usage</span>
+                  <span>Max {form.monthly_cap}/mo</span>
+                </div>
+                <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+                  <div className="h-full bg-emerald-500 rounded-full transition-all" style={{ width: "8%" }} />
+                </div>
+              </div>
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="throttle_pause_ms">Throttle Delay (ms)</Label>
+              <Label htmlFor="throttle_pause_ms" className="text-xs font-semibold">Throttle Delay (ms)</Label>
               <Input
                 id="throttle_pause_ms"
                 type="number"
@@ -447,7 +450,7 @@ function SettingsPage() {
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="timezone" className="flex items-center gap-1.5">
+            <Label htmlFor="timezone" className="flex items-center gap-1.5 text-xs font-semibold">
               <Clock className="size-3.5 text-muted-foreground" /> Timezone
             </Label>
             <Input
@@ -457,14 +460,12 @@ function SettingsPage() {
               readOnly
               className="bg-muted"
             />
-            <p className="text-xs text-muted-foreground">
-              Locked to India Standard Time (<code className="font-mono">Asia/Kolkata</code>)
-            </p>
           </div>
         </Card>
 
-        <Card className="p-6 space-y-5">
-          <h2 className="text-lg font-medium border-b pb-2 flex items-center gap-2">
+        {/* Safeguards */}
+        <Card className="p-6 space-y-5 border-border/80 shadow-xs">
+          <h2 className="text-base font-bold border-b border-border pb-3 flex items-center gap-2 font-heading">
             <ShieldCheck className="size-5 text-primary" /> Security & Deliverability Safeguards
           </h2>
 
@@ -492,9 +493,9 @@ function SettingsPage() {
               ],
             ] as const
           ).map(([key, label, help]) => (
-            <div key={key} className="flex items-start justify-between gap-4 rounded-md border p-3">
+            <div key={key} className="flex items-start justify-between gap-4 rounded-lg border border-border/80 p-3.5">
               <div>
-                <Label htmlFor={key} className="text-sm font-medium">
+                <Label htmlFor={key} className="text-xs font-semibold text-foreground">
                   {label}
                 </Label>
                 <p className="mt-0.5 text-xs text-muted-foreground">{help}</p>
@@ -507,8 +508,8 @@ function SettingsPage() {
             </div>
           ))}
 
-          <div className="rounded-md bg-muted/40 p-3 text-xs space-y-1.5">
-            <div className="flex items-center gap-2">
+          <div className="rounded-lg bg-muted/40 p-3.5 text-xs space-y-2 border border-border/60">
+            <div className="flex items-center gap-2 font-medium">
               {envStatus?.resendApiKey ? (
                 <ShieldCheck className="size-4 text-emerald-500" />
               ) : (
@@ -516,7 +517,7 @@ function SettingsPage() {
               )}
               <span>Email API key {envStatus?.resendApiKey ? "configured" : "missing"}</span>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 font-medium">
               {envStatus?.webhookSecret ? (
                 <ShieldCheck className="size-4 text-emerald-500" />
               ) : (
@@ -533,8 +534,8 @@ function SettingsPage() {
         </Card>
 
         <div className="flex justify-end gap-3">
-          <Button type="submit" disabled={updateMutation.isPending}>
-            <Save className="size-4 mr-1.5" />
+          <Button type="submit" disabled={updateMutation.isPending} className="h-10 px-6 shadow-sm">
+            <Save className="size-4 mr-2" />
             {updateMutation.isPending ? "Saving Settings…" : "Save Settings"}
           </Button>
         </div>

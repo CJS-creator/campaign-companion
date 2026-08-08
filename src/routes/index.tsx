@@ -11,13 +11,14 @@ import {
   ShieldAlert,
   ShieldCheck,
   Settings,
-  AlertCircle,
+  Sparkles,
 } from "lucide-react";
 import { campaignsQuery, sendsQuery } from "@/lib/data";
 import { getSenderStatus } from "@/lib/settings.functions";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { SkeletonCard, SkeletonTable } from "@/components/ui/skeleton";
 import { SendTestEmailDialog } from "@/components/SendTestEmailDialog";
 import { CheckSendingOptionDialog } from "@/components/CheckSendingOptionDialog";
 import { CampaignErrorLogsDialog } from "@/components/CampaignErrorLogsDialog";
@@ -109,26 +110,29 @@ function Dashboard() {
 
   return (
     <div className="space-y-8">
-      <header className="flex flex-wrap items-end justify-between gap-4">
+      <header className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight">Dashboard</h1>
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight font-heading">
+            Campaign Dashboard
+          </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Performance across all marketing campaigns.
+            Real-time deliverability and engagement performance trends.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <CheckSendingOptionDialog />
           <Button
             type="button"
             variant="outline"
             onClick={exportMetrics}
             disabled={campaigns.length === 0}
+            className="h-9 text-xs"
           >
-            <Download className="size-4" /> Export metrics
+            <Download className="size-3.5 mr-1.5" /> Export Metrics
           </Button>
-          <Button asChild>
+          <Button asChild className="h-9 text-xs shadow-sm">
             <Link to="/campaigns/new">
-              <Plus className="size-4" /> New campaign
+              <Plus className="size-4 mr-1" /> New Campaign
             </Link>
           </Button>
         </div>
@@ -158,7 +162,7 @@ function Dashboard() {
                   "No verified sender address is configured. Add your verified sending address in Settings before sending campaigns."}
               </p>
               <div className="pt-1 flex flex-wrap items-center gap-2 text-xs">
-                <span className="text-muted-foreground">Currently Configured Sender Address:</span>
+                <span className="text-muted-foreground">Configured Sender Address:</span>
                 <code className="font-mono bg-background/80 px-2 py-0.5 rounded border border-amber-500/30 text-amber-950 font-medium">
                   {senderStatus.fromAddress || "(None configured)"}
                 </code>
@@ -177,157 +181,180 @@ function Dashboard() {
           </Button>
         </div>
       ) : senderStatus && senderStatus.verified ? (
-        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 text-xs flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-emerald-800">
+        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3.5 text-xs flex flex-wrap items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300">
             <ShieldCheck className="size-4 text-emerald-600 shrink-0" />
             <span>
               Sending active from verified Sender Address:{" "}
-              <strong className="font-mono text-emerald-950">{senderStatus.fromAddress}</strong>
+              <strong className="font-mono text-emerald-950 dark:text-emerald-200">{senderStatus.fromAddress}</strong>
             </span>
           </div>
           <Badge
             variant="outline"
-            className="border-emerald-500/40 text-emerald-700 bg-emerald-500/10 font-semibold text-[10px]"
+            className="border-emerald-500/40 text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 font-semibold text-[10px]"
           >
             Sender Verified
           </Badge>
         </div>
       ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          icon={<Mail className="size-4 text-blue-500" />}
-          label="Emails delivered"
-          value={totals.sent}
-        />
-        <StatCard
-          icon={<CheckCircle2 className="size-4 text-emerald-500" />}
-          label="Delivery rate"
-          value={totals.deliverability}
-        />
-        <StatCard
-          icon={<Eye className="size-4 text-purple-500" />}
-          label="Open rate"
-          value={pct(totals.opened, totals.sent)}
-        />
-        <StatCard
-          icon={<MousePointerClick className="size-4 text-amber-500" />}
-          label="Click rate"
-          value={pct(totals.clicked, totals.sent)}
-        />
-      </div>
+      {/* Metric Cards Grid */}
+      {isLoading ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard
+            icon={<Mail className="size-4 text-blue-500" />}
+            label="Emails Delivered"
+            value={totals.sent}
+            badge="+100% verified"
+          />
+          <StatCard
+            icon={<CheckCircle2 className="size-4 text-emerald-500" />}
+            label="Delivery Rate"
+            value={totals.deliverability}
+            badge="High inbox score"
+          />
+          <StatCard
+            icon={<Eye className="size-4 text-purple-500" />}
+            label="Open Rate"
+            value={pct(totals.opened, totals.sent)}
+            badge="Tracked opens"
+          />
+          <StatCard
+            icon={<MousePointerClick className="size-4 text-amber-500" />}
+            label="Click Rate"
+            value={pct(totals.clicked, totals.sent)}
+            badge="Link engagements"
+          />
+        </div>
+      )}
 
-      <Card className="overflow-hidden p-0">
-        <table className="w-full text-sm">
-          <thead className="border-b border-border bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
-            <tr>
-              <th className="px-5 py-3 font-medium">Campaign</th>
-              <th className="px-5 py-3 font-medium">Status</th>
-              <th className="px-5 py-3 font-medium">Sent</th>
-              <th className="px-5 py-3 font-medium">Opens</th>
-              <th className="px-5 py-3 font-medium">Clicks</th>
-              <th className="px-5 py-3 font-medium text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading && (
-              <tr>
-                <td colSpan={6} className="px-5 py-8 text-center text-muted-foreground">
-                  Loading…
-                </td>
-              </tr>
-            )}
-            {!isLoading && campaigns.length === 0 && (
-              <tr>
-                <td colSpan={6} className="px-5 py-10 text-center text-muted-foreground">
-                  No campaigns yet.
-                </td>
-              </tr>
-            )}
-            {campaigns.map((campaign) => {
-              const rows = sends.filter((s) => s.campaign_id === campaign.id);
-              const sent = rows.filter((s) => s.sent_at).length;
-              const opened = rows.filter((s) => s.opened_at).length;
-              const clicked = rows.filter((s) => s.clicked_at).length;
-              const failedSends = rows.filter((s) => s.status === "failed");
-              const isProcessing = campaign.status === "queued" || campaign.status === "sending";
-              const isScheduled = campaign.status === "scheduled";
-
-              return (
-                <tr
-                  key={campaign.id}
-                  className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors"
-                >
-                  <td className="px-5 py-3">
-                    <Link
-                      to="/campaigns/$id"
-                      params={{ id: campaign.id }}
-                      className="font-medium hover:underline"
-                    >
-                      {campaign.subject}
-                    </Link>
-                    <div className="text-xs text-muted-foreground">
-                      {isScheduled && campaign.scheduled_for
-                        ? `Scheduled for ${new Date(campaign.scheduled_for).toLocaleString()}`
-                        : new Date(campaign.created_at).toLocaleDateString()}
-                    </div>
-                  </td>
-                  <td className="px-5 py-3">
-                    <div className="flex flex-col items-start gap-1">
-                      <Badge
-                        variant={
-                          campaign.status === "sent"
-                            ? "default"
-                            : isProcessing
-                              ? "secondary"
-                              : "outline"
-                        }
-                        className={
-                          isScheduled
-                            ? "bg-purple-500/10 text-purple-700 border-purple-500/30 font-medium"
-                            : ""
-                        }
-                      >
-                        {isScheduled ? "Scheduled" : campaign.status}
-                      </Badge>
-
-                      {/* Per-campaign Error Troubleshooting button if failed sends exist */}
-                      {failedSends.length > 0 && (
-                        <CampaignErrorLogsDialog
-                          campaignId={campaign.id}
-                          campaignSubject={campaign.subject}
-                          failedSends={failedSends}
-                        />
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-5 py-3">{sent}</td>
-                  <td className="px-5 py-3">
-                    {opened} <span className="text-muted-foreground">({pct(opened, sent)})</span>
-                  </td>
-                  <td className="px-5 py-3">
-                    {clicked} <span className="text-muted-foreground">({pct(clicked, sent)})</span>
-                  </td>
-                  <td className="px-5 py-3 text-right">
-                    <div className="flex justify-end items-center gap-1">
-                      <SendTestEmailDialog
-                        campaignId={campaign.id}
-                        campaignSubject={campaign.subject}
-                        senderVerified={Boolean(senderStatus?.verified)}
-                      />
-                      <Button asChild size="sm" variant="ghost" className="h-8 text-xs">
-                        <Link to="/campaigns/new" search={{ clone: campaign.id }}>
-                          <Copy className="size-3.5 mr-1" /> Duplicate
-                        </Link>
-                      </Button>
-                    </div>
-                  </td>
+      {/* Campaigns Table / Skeleton */}
+      {isLoading ? (
+        <SkeletonTable rows={4} />
+      ) : campaigns.length === 0 ? (
+        <Card className="p-12 text-center space-y-4 border-dashed border-2 border-border/80 bg-muted/20">
+          <div className="mx-auto flex size-14 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <Sparkles className="size-7" />
+          </div>
+          <div className="max-w-md mx-auto space-y-1">
+            <h3 className="text-lg font-bold">No Email Campaigns Yet</h3>
+            <p className="text-sm text-muted-foreground">
+              Create your first email marketing campaign to start tracking sends, open rates, and click engagements.
+            </p>
+          </div>
+          <Button asChild className="mt-2">
+            <Link to="/campaigns/new">
+              <Plus className="size-4 mr-2" /> Compose Your First Campaign
+            </Link>
+          </Button>
+        </Card>
+      ) : (
+        <Card className="overflow-hidden p-0 border-border/80 shadow-xs">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="border-b border-border bg-muted/50 text-left text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+                <tr>
+                  <th className="px-5 py-3.5">Campaign</th>
+                  <th className="px-5 py-3.5">Status</th>
+                  <th className="px-5 py-3.5">Sent</th>
+                  <th className="px-5 py-3.5">Opens</th>
+                  <th className="px-5 py-3.5">Clicks</th>
+                  <th className="px-5 py-3.5 text-right">Actions</th>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </Card>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {campaigns.map((campaign) => {
+                  const rows = sends.filter((s) => s.campaign_id === campaign.id);
+                  const sent = rows.filter((s) => s.sent_at).length;
+                  const opened = rows.filter((s) => s.opened_at).length;
+                  const clicked = rows.filter((s) => s.clicked_at).length;
+                  const failedSends = rows.filter((s) => s.status === "failed");
+                  const isProcessing = campaign.status === "queued" || campaign.status === "sending";
+                  const isScheduled = campaign.status === "scheduled";
+
+                  return (
+                    <tr
+                      key={campaign.id}
+                      className="hover:bg-muted/30 transition-colors"
+                    >
+                      <td className="px-5 py-3.5">
+                        <Link
+                          to="/campaigns/$id"
+                          params={{ id: campaign.id }}
+                          className="font-semibold text-foreground hover:text-primary hover:underline transition-colors"
+                        >
+                          {campaign.subject}
+                        </Link>
+                        <div className="text-xs text-muted-foreground mt-0.5">
+                          {isScheduled && campaign.scheduled_for
+                            ? `Scheduled for ${new Date(campaign.scheduled_for).toLocaleString()}`
+                            : new Date(campaign.created_at).toLocaleDateString()}
+                        </div>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <div className="flex flex-col items-start gap-1">
+                          <Badge
+                            variant={
+                              campaign.status === "sent"
+                                ? "default"
+                                : isProcessing
+                                  ? "secondary"
+                                  : "outline"
+                            }
+                            className={
+                              isScheduled
+                                ? "bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/30 font-medium"
+                                : ""
+                            }
+                          >
+                            {isScheduled ? "Scheduled" : campaign.status}
+                          </Badge>
+
+                          {failedSends.length > 0 && (
+                            <CampaignErrorLogsDialog
+                              campaignId={campaign.id}
+                              campaignSubject={campaign.subject}
+                              failedSends={failedSends}
+                            />
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-5 py-3.5 font-medium">{sent}</td>
+                      <td className="px-5 py-3.5">
+                        {opened} <span className="text-xs text-muted-foreground">({pct(opened, sent)})</span>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        {clicked} <span className="text-xs text-muted-foreground">({pct(clicked, sent)})</span>
+                      </td>
+                      <td className="px-5 py-3.5 text-right">
+                        <div className="flex justify-end items-center gap-1.5">
+                          <SendTestEmailDialog
+                            campaignId={campaign.id}
+                            campaignSubject={campaign.subject}
+                            senderVerified={Boolean(senderStatus?.verified)}
+                          />
+                          <Button asChild size="sm" variant="ghost" className="h-8 text-xs">
+                            <Link to="/campaigns/new" search={{ clone: campaign.id }}>
+                              <Copy className="size-3.5 mr-1" /> Duplicate
+                            </Link>
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
     </div>
   );
 }
@@ -336,18 +363,27 @@ function StatCard({
   icon,
   label,
   value,
+  badge,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string | number;
+  badge?: string;
 }) {
   return (
-    <Card className="p-5">
-      <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground">
-        {icon}
-        {label}
+    <Card className="p-5 hover:scale-[1.01] hover:shadow-md transition-all ease-out cursor-default border-border/80 bg-card/90">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-xs uppercase tracking-wider font-semibold text-muted-foreground">
+          {icon}
+          {label}
+        </div>
+        {badge && (
+          <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">
+            {badge}
+          </span>
+        )}
       </div>
-      <div className="mt-2 text-3xl font-semibold tabular-nums">{value}</div>
+      <div className="mt-3 text-3xl font-extrabold tabular-nums font-heading tracking-tight">{value}</div>
     </Card>
   );
 }

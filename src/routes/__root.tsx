@@ -15,7 +15,17 @@ import { useEffect, useState, type ReactNode } from "react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { signOutUser } from "@/lib/auth";
-import { User as UserIcon, LogOut, Settings as SettingsIcon } from "lucide-react";
+import { LogOut, Menu, Sparkles } from "lucide-react";
+import { ThemeProvider } from "@/components/ThemeProvider";
+import { ThemeToggle } from "@/components/ThemeToggle";
+import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 
 import appCss from "../styles.css?url";
 import { Toaster } from "../components/ui/sonner";
@@ -25,8 +35,8 @@ function NotFoundComponent() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
-        <h1 className="text-7xl font-bold text-foreground">404</h1>
-        <h2 className="mt-4 text-xl font-semibold text-foreground">Page not found</h2>
+        <h1 className="text-7xl font-extrabold text-foreground tracking-tight">404</h1>
+        <h2 className="mt-4 text-xl font-bold text-foreground">Page not found</h2>
         <p className="mt-2 text-sm text-muted-foreground">
           The page you're looking for doesn't exist or has been moved.
         </p>
@@ -53,7 +63,7 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
-        <h1 className="text-xl font-semibold tracking-tight text-foreground">
+        <h1 className="text-xl font-bold tracking-tight text-foreground">
           This page didn't load
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
@@ -156,6 +166,8 @@ function RootComponent() {
   const location = useLocation();
 
   const [user, setUser] = useState<User | null>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
   const isAuthRoute =
     location.pathname.startsWith("/login") ||
     location.pathname.startsWith("/auth/") ||
@@ -187,64 +199,130 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <div className="min-h-screen bg-background">
-        {!isAuthRoute && (
-          <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-40">
-            <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-6 px-6 py-3.5">
-              <Link to="/" className="text-sm font-bold tracking-tight text-foreground flex items-center gap-2">
-                <span className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground font-semibold text-xs">
-                  PS
-                </span>
-                Postmark Studio
-              </Link>
+      <ThemeProvider defaultTheme="system">
+        <div className="min-h-screen bg-background font-sans antialiased text-foreground selection:bg-primary/20 selection:text-primary">
+          {!isAuthRoute && (
+            <header className="border-b border-border/80 bg-card/80 backdrop-blur-md sticky top-0 z-40 shadow-xs">
+              <div className="mx-auto flex max-w-5xl items-center justify-between px-4 sm:px-6 py-3">
+                <Link to="/" className="text-sm font-bold tracking-tight text-foreground flex items-center gap-2.5">
+                  <span className="flex size-7 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-primary/80 text-primary-foreground font-bold text-xs shadow-xs ring-1 ring-primary/30">
+                    PS
+                  </span>
+                  <span className="hidden sm:inline font-heading font-bold text-base bg-gradient-to-r from-foreground to-foreground/80 bg-clip-text">
+                    Postmark Studio
+                  </span>
+                </Link>
 
-              <nav className="flex items-center gap-1 text-sm">
-                {navItems.map((item) => (
-                  <Link
-                    key={item.to}
-                    to={item.to}
-                    activeOptions={{ exact: item.to === "/" }}
-                    className="rounded-md px-3 py-1.5 text-muted-foreground transition-colors hover:text-foreground hover:bg-muted/50"
-                    activeProps={{ className: "bg-secondary text-foreground font-medium" }}
-                  >
-                    {item.label}
-                  </Link>
-                ))}
-              </nav>
-
-              <div className="ml-auto flex items-center gap-3">
-                {user ? (
-                  <div className="flex items-center gap-3 bg-muted/40 pl-3 pr-2 py-1 rounded-full border border-border">
-                    <span className="text-xs font-medium text-foreground max-w-[160px] truncate">
-                      {user.user_metadata?.["full_name"] || user.email}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={handleSignOut}
-                      title="Sign out"
-                      className="flex size-7 items-center justify-center rounded-full bg-secondary text-muted-foreground transition-colors hover:text-destructive hover:bg-destructive/10"
+                {/* Desktop Navigation Links */}
+                <nav className="hidden md:flex items-center gap-1 text-sm font-medium">
+                  {navItems.map((item) => (
+                    <Link
+                      key={item.to}
+                      to={item.to}
+                      activeOptions={{ exact: item.to === "/" }}
+                      className="rounded-md px-3 py-1.5 text-muted-foreground transition-all hover:text-foreground hover:bg-accent/60"
+                      activeProps={{ className: "bg-secondary text-foreground font-semibold shadow-xs" }}
                     >
-                      <LogOut className="size-3.5" />
-                    </button>
-                  </div>
-                ) : (
-                  <Link
-                    to="/login"
-                    className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-                  >
-                    Sign In
-                  </Link>
-                )}
-              </div>
-            </div>
-          </header>
-        )}
+                      {item.label}
+                    </Link>
+                  ))}
+                </nav>
 
-        <main className="mx-auto max-w-5xl px-6 py-8">
-          <Outlet />
-        </main>
-      </div>
-      <Toaster />
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <ThemeToggle />
+
+                  {/* Desktop User Account Pill */}
+                  {user ? (
+                    <div className="hidden sm:flex items-center gap-2.5 bg-muted/50 pl-3 pr-1.5 py-1 rounded-full border border-border/80 text-xs">
+                      <span className="font-medium text-foreground max-w-[140px] truncate">
+                        {user.user_metadata?.["full_name"] || user.email}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleSignOut}
+                        title="Sign out"
+                        className="flex size-7 items-center justify-center rounded-full bg-background text-muted-foreground transition-colors hover:text-destructive hover:bg-destructive/10 border border-border/40"
+                      >
+                        <LogOut className="size-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <Link
+                      to="/login"
+                      className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition-all hover:bg-primary/90 shadow-xs"
+                    >
+                      Sign In
+                    </Link>
+                  )}
+
+                  {/* Mobile Drawer Trigger */}
+                  <div className="md:hidden">
+                    <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+                      <SheetTrigger asChild>
+                        <Button variant="outline" size="icon" className="size-8">
+                          <Menu className="size-4" />
+                          <span className="sr-only">Toggle menu</span>
+                        </Button>
+                      </SheetTrigger>
+                      <SheetContent side="right" className="w-72 bg-card border-border p-6 flex flex-col justify-between">
+                        <div>
+                          <SheetHeader className="text-left pb-4 border-b border-border">
+                            <SheetTitle className="flex items-center gap-2 text-base font-bold">
+                              <span className="flex size-7 items-center justify-center rounded-lg bg-primary text-primary-foreground text-xs font-bold">
+                                PS
+                              </span>
+                              Postmark Studio
+                            </SheetTitle>
+                          </SheetHeader>
+
+                          <nav className="flex flex-col gap-1.5 pt-6">
+                            {navItems.map((item) => (
+                              <Link
+                                key={item.to}
+                                to={item.to}
+                                activeOptions={{ exact: item.to === "/" }}
+                                onClick={() => setMobileMenuOpen(false)}
+                                className="rounded-md px-3.5 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground hover:bg-accent"
+                                activeProps={{ className: "bg-secondary text-foreground font-semibold" }}
+                              >
+                                {item.label}
+                              </Link>
+                            ))}
+                          </nav>
+                        </div>
+
+                        {user && (
+                          <div className="pt-6 border-t border-border space-y-3">
+                            <div className="text-xs text-muted-foreground truncate">
+                              Signed in as <strong className="text-foreground block">{user.email}</strong>
+                            </div>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              className="w-full flex items-center gap-2"
+                              onClick={() => {
+                                setMobileMenuOpen(false);
+                                handleSignOut();
+                              }}
+                            >
+                              <LogOut className="size-4" /> Sign Out
+                            </Button>
+                          </div>
+                        )}
+                      </SheetContent>
+                    </Sheet>
+                  </div>
+                </div>
+              </div>
+            </header>
+          )}
+
+          <main className="mx-auto max-w-5xl px-4 sm:px-6 py-6 sm:py-8">
+            <Outlet />
+          </main>
+        </div>
+        <Toaster />
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }

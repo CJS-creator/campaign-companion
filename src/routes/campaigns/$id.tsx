@@ -255,6 +255,14 @@ function CampaignDetail() {
             </Link>
           </Button>
 
+          {campaign.status === "sent" && (
+            <Button asChild variant="outline" className="border-purple-500/40 text-purple-700 dark:text-purple-300 hover:bg-purple-500/10">
+              <Link to="/campaigns/new" search={{ clone: campaign.id }}>
+                <Clock className="size-4 mr-1 text-purple-500" /> Follow-up / Resend
+              </Link>
+            </Button>
+          )}
+
           {isProcessing && (
             <Button
               type="button"
