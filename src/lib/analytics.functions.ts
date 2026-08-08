@@ -42,10 +42,20 @@ export type AnalyticsSummaryData = {
   openRatePct: number;
   clickRatePct: number;
   clickToOpenRatePct: number;
+  totalBounces: number;
+  totalComplaints: number;
+  totalUnsubscribes: number;
+  totalFailed: number;
+  bounceRatePct: number;
+  complaintRatePct: number;
+  unsubscribeRatePct: number;
+  reputationRisk: "ok" | "warning" | "critical";
+  reputationMessage: string;
   timeSeries: TimeSeriesDataPoint[];
   campaignComparison: CampaignComparisonPoint[];
   topLinks: TopLinkItem[];
 };
+
 
 export const fetchAnalyticsData = createServerFn({ method: "GET" })
   .inputValidator((data: unknown) => analyticsInputSchema.parse(data ?? {}))
@@ -99,7 +109,14 @@ export const fetchAnalyticsData = createServerFn({ method: "GET" })
     let eventsQuery = supabaseAdmin
       .from("events")
       .select("id, event_type, campaign_id, lead_id, metadata, created_at")
-      .in("event_type", ["opened", "clicked"]);
+      .in("event_type", [
+        "opened",
+        "clicked",
+        "bounced",
+        "complained",
+        "unsubscribed",
+        "failed",
+      ]);
 
     if (cutoffIso) {
       eventsQuery = eventsQuery.gte("created_at", cutoffIso);
@@ -115,9 +132,34 @@ export const fetchAnalyticsData = createServerFn({ method: "GET" })
     const totalOpens = allSends.filter((s) => s.opened_at).length;
     const totalClicks = allSends.filter((s) => s.clicked_at).length;
 
+    const countEvents = (type: string) =>
+      (events ?? []).filter((e) => e.event_type === type).length;
+    const totalBounces = countEvents("bounced");
+    const totalComplaints = countEvents("complained");
+    const totalUnsubscribes = countEvents("unsubscribed");
+    const totalFailed = allSends.filter((s) => s.status === "failed").length;
+
+    const pct = (n: number) => (totalSent ? Math.round((n / totalSent) * 1000) / 10 : 0);
+    const bounceRatePct = pct(totalBounces);
+    const complaintRatePct = pct(totalComplaints);
+    const unsubscribeRatePct = pct(totalUnsubscribes);
+
+    let reputationRisk: "ok" | "warning" | "critical" = "ok";
+    let reputationMessage = "Bounce and complaint rates are within healthy limits.";
+    if (totalSent >= 20) {
+      if (bounceRatePct >= 5 || complaintRatePct >= 0.3) {
+        reputationRisk = "critical";
+        reputationMessage = `Sender reputation at risk: ${bounceRatePct}% bounces, ${complaintRatePct}% complaints. Pause sending and clean your list.`;
+      } else if (bounceRatePct >= 2 || complaintRatePct >= 0.1) {
+        reputationRisk = "warning";
+        reputationMessage = `Watch deliverability: ${bounceRatePct}% bounces, ${complaintRatePct}% complaints.`;
+      }
+    }
+
     const openRatePct = totalSent ? Math.round((totalOpens / totalSent) * 100) : 0;
     const clickRatePct = totalSent ? Math.round((totalClicks / totalSent) * 100) : 0;
     const clickToOpenRatePct = totalOpens ? Math.round((totalClicks / totalOpens) * 100) : 0;
+
 
     // Build Time-Series Map by Date (YYYY-MM-DD)
     const dateMap = new Map<string, { sent: number; opens: number; clicks: number }>();
@@ -219,6 +261,16 @@ export const fetchAnalyticsData = createServerFn({ method: "GET" })
       openRatePct,
       clickRatePct,
       clickToOpenRatePct,
+      totalBounces,
+      totalComplaints,
+      totalUnsubscribes,
+      totalFailed,
+      bounceRatePct,
+      complaintRatePct,
+      unsubscribeRatePct,
+      reputationRisk,
+      reputationMessage,
+
       timeSeries,
       campaignComparison,
       topLinks,

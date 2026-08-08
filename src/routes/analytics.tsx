@@ -15,8 +15,8 @@ import {
   Target,
   Percent,
   ShieldCheck,
-  AlertTriangle,
   Activity,
+  AlertTriangle,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -33,7 +33,7 @@ import {
 import { fetchAnalyticsData, type TimeframeOption } from "@/lib/analytics.functions";
 import { campaignsQuery } from "@/lib/data";
 import { Button } from "@/components/ui/button";
-import { SkeletonCard, SkeletonTable } from "@/components/ui/skeleton";
+import { SkeletonCard } from "@/components/ui/skeleton";
 import { PageHeader, StatCard, StatusBadge, DataTable, type Column } from "@/components/patterns";
 
 export const Route = createFileRoute("/analytics")({
@@ -86,7 +86,6 @@ function AnalyticsPage() {
   const {
     data: analytics,
     isLoading,
-    isFetching,
   } = useQuery({
     queryKey: ["analytics", timeframe, selectedCampaignId],
     queryFn: () =>
@@ -203,19 +202,33 @@ function AnalyticsPage() {
         }
       />
 
+      {/* Reputation Risk Alert Banner */}
+      {!isLoading && analytics && analytics.reputationRisk !== "ok" && (
+        <div
+          className={`glass-panel rounded-xl p-4 text-xs font-medium border shadow-xs flex items-center gap-3 ${
+            analytics.reputationRisk === "critical"
+              ? "border-destructive/40 bg-destructive/10 text-destructive"
+              : "border-warning/40 bg-warning/10 text-foreground"
+          }`}
+        >
+          <AlertTriangle className="size-5 shrink-0" />
+          <span>{analytics.reputationMessage}</span>
+        </div>
+      )}
+
       {/* Headline Health & Risk Hierarchy Cards */}
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div className="glass-panel rounded-xl p-4 border border-success/30 bg-success/5 flex items-start gap-3 shadow-xs">
           <div className="rounded-lg bg-success/20 p-2 text-success shrink-0">
             <ShieldCheck className="size-5" />
           </div>
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <h3 className="font-bold text-sm text-foreground">Bounce Risk Status</h3>
-              <StatusBadge status="sent" label="Low Risk (< 0.5%)" />
+              <h3 className="font-bold text-sm text-foreground">Bounce Rate</h3>
+              <StatusBadge status={analytics?.bounceRatePct && analytics.bounceRatePct > 2 ? "bounce" : "sent"} label={`${analytics?.bounceRatePct ?? 0}%`} />
             </div>
             <p className="text-xs text-muted-foreground">
-              Your overall delivery bounce rate is well within Postmark's 2% safety threshold.
+              {analytics?.totalBounces ?? 0} total bounce event(s)
             </p>
           </div>
         </div>
@@ -226,11 +239,41 @@ function AnalyticsPage() {
           </div>
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <h3 className="font-bold text-sm text-foreground">Complaint Risk Score</h3>
-              <StatusBadge status="info" label="Optimal (0.01%)" />
+              <h3 className="font-bold text-sm text-foreground">Complaint Rate</h3>
+              <StatusBadge status={analytics?.complaintRatePct && analytics.complaintRatePct > 0.1 ? "warning" : "info"} label={`${analytics?.complaintRatePct ?? 0}%`} />
             </div>
             <p className="text-xs text-muted-foreground">
-              Spam complaint rate remains optimal with high domain reputation score.
+              {analytics?.totalComplaints ?? 0} spam complaint(s)
+            </p>
+          </div>
+        </div>
+
+        <div className="glass-panel rounded-xl p-4 border border-border/80 flex items-start gap-3 shadow-xs">
+          <div className="rounded-lg bg-muted p-2 text-muted-foreground shrink-0">
+            <Percent className="size-5" />
+          </div>
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <h3 className="font-bold text-sm text-foreground">Unsubscribe Rate</h3>
+              <StatusBadge status="draft" label={`${analytics?.unsubscribeRatePct ?? 0}%`} />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {analytics?.totalUnsubscribes ?? 0} total opt-out(s)
+            </p>
+          </div>
+        </div>
+
+        <div className="glass-panel rounded-xl p-4 border border-destructive/30 bg-destructive/5 flex items-start gap-3 shadow-xs">
+          <div className="rounded-lg bg-destructive/20 p-2 text-destructive shrink-0">
+            <Mail className="size-5" />
+          </div>
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <h3 className="font-bold text-sm text-foreground">Failed Sends</h3>
+              <StatusBadge status={analytics?.totalFailed ? "bounce" : "sent"} label={String(analytics?.totalFailed ?? 0)} />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Unreached delivery attempts
             </p>
           </div>
         </div>

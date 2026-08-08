@@ -253,7 +253,6 @@ function ComposerPage() {
       <div className="glass-panel rounded-xl p-4 border border-border/80 shadow-xs">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {steps.map((step) => {
-            const StepIcon = step.icon;
             const isActive = currentStep === step.number;
             const isDone = currentStep > step.number;
 
@@ -615,8 +614,11 @@ function ComposerPage() {
             dailyCap={settings?.daily_cap || 100}
             monthlyCap={settings?.monthly_cap || 3000}
             senderConfigured={senderConfigured}
+            senderVerified={senderVerified}
             linkVerified={linkVerified}
-            hasPlainText={Boolean(bodyHtml.trim())}
+            hasPlainText={false}
+            hasSubject={Boolean(subject.trim())}
+            hasBody={Boolean(bodyHtml.replace(/<[^>]*>/g, "").trim())}
             scheduledTime={isScheduling ? scheduledFor : undefined}
           />
         </div>

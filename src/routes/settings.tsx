@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import {
   Save,
   ShieldCheck,
-  ShieldAlert,
   Building,
   Mail,
   MapPin,
@@ -15,7 +14,6 @@ import {
   Copy,
   CheckCircle2,
   RefreshCw,
-  Sliders,
   Lock,
 } from "lucide-react";
 import {
@@ -148,6 +146,8 @@ function SettingsPage() {
 
   const targetDomain = dnsData?.domain || "notify.designforge.me";
   const records = dnsData?.records || [];
+  const domainStatus = dnsData?.domainStatus ?? "unknown";
+  const isDomainOk = domainStatus === "verified";
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -166,7 +166,7 @@ function SettingsPage() {
                 <h2 className="text-base font-bold font-heading flex items-center gap-2 text-foreground">
                   <Globe className="size-5 text-primary" /> Live DNS & Domain Verification
                 </h2>
-                <StatusBadge status="sent" label="Active & Verified" />
+                <StatusBadge status={isDomainOk ? "sent" : "warning"} label={isDomainOk ? "Active & Verified" : "Verification Needed"} />
               </div>
               <p className="text-xs text-muted-foreground mt-0.5">
                 Target domain: <code className="font-mono font-semibold text-foreground">{targetDomain}</code>. Verify SPF, DKIM, and DMARC records.
@@ -188,14 +188,20 @@ function SettingsPage() {
             </Button>
           </div>
 
-          <div className="rounded-lg border border-success/30 bg-success/5 p-3.5 text-xs flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2 text-foreground">
-              <ShieldCheck className="size-4 text-success shrink-0" />
-              <span>
-                Domain identity <strong className="font-mono">{targetDomain}</strong> is fully verified for production sending.
-              </span>
+          <div
+            className={`rounded-lg border p-3.5 text-xs flex flex-wrap items-center justify-between gap-3 ${
+              isDomainOk
+                ? "border-success/30 bg-success/5 text-foreground"
+                : "border-warning/30 bg-warning/5 text-foreground"
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <ShieldCheck className={`size-4 shrink-0 ${isDomainOk ? "text-success" : "text-warning"}`} />
+              <span>{dnsData?.message ?? `Domain identity ${targetDomain} status check ready.`}</span>
             </div>
-            <span className="font-mono text-[11px] text-muted-foreground">DKIM 2048-bit active</span>
+            <Badge className={`text-[10px] text-white ${isDomainOk ? "bg-success" : "bg-warning"}`}>
+              Status: {domainStatus}
+            </Badge>
           </div>
 
           <div className="space-y-3">
@@ -208,7 +214,7 @@ function SettingsPage() {
                     </Badge>
                     <span className="font-medium text-xs text-foreground">{rec.purpose}</span>
                   </div>
-                  <StatusBadge status={rec.status === "verified" ? "sent" : "info"} label={rec.status === "verified" ? "Verified" : "Recommended"} />
+                  <StatusBadge status={rec.status === "verified" ? "sent" : "info"} label={rec.status === "verified" ? "Verified" : rec.status} />
                 </div>
 
                 <div className="grid gap-2 sm:grid-cols-2 text-xs">

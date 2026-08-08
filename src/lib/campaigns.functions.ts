@@ -37,7 +37,7 @@ async function parseResendError(res: Response): Promise<string> {
   if (detailMsg.length > 350) detailMsg = detailMsg.slice(0, 350) + "…";
 
   if (status === 403) {
-    return `HTTP 403 Forbidden: Resend domain validation failed — ${detailMsg || "Sender address domain is not verified in Resend account."}`;
+    return `Sender domain not verified — ${detailMsg || "the sender address's domain is not verified."} Set the Sender Address in Settings to an address on a domain you own and have verified (public mailboxes like gmail.com can never be used).`;
   }
   if (status === 422) {
     return `HTTP 422 Unprocessable Entity: ${detailMsg || "Invalid recipient email address or payload format."}`;
@@ -422,7 +422,7 @@ export const sendCampaign = createServerFn({ method: "POST" })
 
     const { data: sendSettings } = await supabaseAdmin
       .from("settings")
-      .select("require_link_check, block_url_shorteners, from_address")
+      .select("require_link_check, block_url_shorteners, from_address, enforce_caps, daily_cap, monthly_cap")
       .eq("id", "default")
       .maybeSingle();
     if (!isVerifiedSenderAddress((sendSettings?.from_address ?? "").trim())) {
@@ -430,6 +430,7 @@ export const sendCampaign = createServerFn({ method: "POST" })
     }
     const requireLinkCheck = sendSettings?.require_link_check ?? true;
     const blockShorteners = sendSettings?.block_url_shorteners ?? true;
+
 
     // Security gate: check links
     const urlsToCheck = new Set<string>();
@@ -482,6 +483,37 @@ export const sendCampaign = createServerFn({ method: "POST" })
 
     if (leadsError) throw new Error(leadsError.message);
     if (!leads || leads.length === 0) throw new Error("No eligible subscribed leads to send to.");
+
+    // Sending caps: refuse to queue a run the caps cannot deliver today.
+    if (sendSettings?.enforce_caps ?? true) {
+      const dailyCap = sendSettings?.daily_cap ?? 100;
+      const monthlyCap = sendSettings?.monthly_cap ?? 3000;
+      const now = new Date();
+      const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+      const usedSince = async (since: string) => {
+        const { count } = await supabaseAdmin
+          .from("sends")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "sent")
+          .gte("sent_at", since);
+        return count ?? 0;
+      };
+      const remainingToday = dailyCap - (await usedSince(dayStart));
+      const remainingMonth = monthlyCap - (await usedSince(monthStart));
+      if (remainingToday <= 0 || remainingMonth <= 0) {
+        throw new Error(
+          `Sending cap reached (${remainingToday <= 0 ? "daily" : "monthly"}). Try again later or raise the cap in Settings.`,
+        );
+      }
+      if (leads.length > Math.min(remainingToday, remainingMonth)) {
+        throw new Error(
+          `This campaign targets ${leads.length} recipients but only ${Math.min(remainingToday, remainingMonth)} sends remain within your cap. Raise the cap in Settings or split the send.`,
+        );
+      }
+    }
+
+
 
     // Claim draft
     const { data: claimedCampaign, error: claimError } = await supabaseAdmin
