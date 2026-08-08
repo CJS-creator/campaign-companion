@@ -1,5 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
+import { useState } from "react";
+import { toast } from "sonner";
 import {
   Download,
   Mail,
@@ -12,12 +15,20 @@ import {
   ShieldCheck,
   Settings,
   Sparkles,
+  RefreshCw,
+  Zap,
+  Clock,
+  AlertCircle,
+  Play,
+  Activity,
 } from "lucide-react";
 import { campaignsQuery, sendsQuery } from "@/lib/data";
 import { getSenderStatus } from "@/lib/settings.functions";
+import { retryFailedSends } from "@/lib/campaigns.functions";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import { SkeletonCard, SkeletonTable } from "@/components/ui/skeleton";
 import { SendTestEmailDialog } from "@/components/SendTestEmailDialog";
 import { CheckSendingOptionDialog } from "@/components/CheckSendingOptionDialog";
@@ -26,18 +37,11 @@ import { CampaignErrorLogsDialog } from "@/components/CampaignErrorLogsDialog";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Campaign dashboard — Postmark Studio" },
+      { title: "Campaign Dashboard — Postmark Studio" },
       {
         name: "description",
         content: "Track sends, open rates and click rates for every marketing email campaign.",
       },
-      { property: "og:title", content: "Campaign dashboard — Postmark Studio" },
-      {
-        property: "og:description",
-        content: "Track sends, open rates and click rates for every marketing email campaign.",
-      },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
   component: Dashboard,
@@ -49,6 +53,9 @@ function pct(part: number, total: number) {
 }
 
 function Dashboard() {
+  const qc = useQueryClient();
+  const [runningWorker, setRunningWorker] = useState(false);
+
   const { data: campaigns = [], isLoading } = useQuery({
     ...campaignsQuery,
     refetchInterval: (query) =>
@@ -76,6 +83,36 @@ function Dashboard() {
     opened: sends.filter((s) => s.opened_at).length,
     clicked: sends.filter((s) => s.clicked_at).length,
     deliverability: pct(totalSentSuccess, totalAttempted),
+  };
+
+  const queuedSends = sends.filter((s) => s.status === "queued").length;
+  const sendingSends = sends.filter((s) => s.status === "sending").length;
+  const failedSends = sends.filter((s) => s.status === "failed");
+  const scheduledCampaigns = campaigns.filter((c) => c.status === "scheduled").length;
+  const activeCampaigns = campaigns.filter((c) => c.status === "queued" || c.status === "sending");
+
+  const isQueueActive = queuedSends > 0 || sendingSends > 0 || scheduledCampaigns > 0 || failedSends.length > 0;
+
+  const triggerWorker = async () => {
+    setRunningWorker(true);
+    try {
+      const res = await fetch("/api/public/cron/process-queue", {
+        method: "POST",
+        headers: { "x-worker-key": "postmark-companion-worker-secret-key-prod" },
+      });
+      if (res.ok) {
+        toast.success("Queue worker executed successfully!");
+        qc.invalidateQueries({ queryKey: ["campaigns"] });
+        qc.invalidateQueries({ queryKey: ["sends"] });
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || "Queue worker execution returned status " + res.status);
+      }
+    } catch {
+      toast.error("Failed to call queue worker");
+    } finally {
+      setRunningWorker(false);
+    }
   };
 
   const exportMetrics = () => {
@@ -116,7 +153,7 @@ function Dashboard() {
             Campaign Dashboard
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Real-time deliverability and engagement performance trends.
+            Real-time deliverability, queue worker progress, and engagement analytics.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -234,6 +271,91 @@ function Dashboard() {
           />
         </div>
       )}
+
+      {/* Campaign Queue & Worker Delivery Progress Monitor */}
+      <Card className="p-5 border-border/80 shadow-xs space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
+          <div className="space-y-0.5">
+            <h2 className="text-base font-bold flex items-center gap-2 font-heading">
+              <Activity className="size-5 text-primary" /> Campaign Queue & Worker Delivery Monitor
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              Monitor active send queues, scheduled campaigns, failures, and worker executions.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={triggerWorker}
+              disabled={runningWorker}
+              className="h-8 text-xs font-semibold"
+            >
+              <RefreshCw className={`size-3.5 mr-1.5 ${runningWorker ? "animate-spin" : ""}`} />
+              Process Queue Now
+            </Button>
+            {failedSends.length > 0 && (
+              <CampaignErrorLogsDialog
+                campaignId={failedSends[0]?.campaign_id || ""}
+                campaignSubject="Queue Error Details"
+                failedSends={failedSends}
+                trigger={
+                  <Button variant="destructive" size="sm" className="h-8 text-xs font-semibold">
+                    <AlertCircle className="size-3.5 mr-1" /> View {failedSends.length} Failed Send(s)
+                  </Button>
+                }
+              />
+            )}
+          </div>
+        </div>
+
+        {/* Live Queue Status Summary Grid */}
+        <div className="grid gap-3 sm:grid-cols-4 text-xs">
+          <div className="rounded-lg border border-border/80 bg-muted/30 p-3 space-y-1">
+            <div className="flex items-center justify-between text-muted-foreground font-semibold">
+              <span>Active Processing</span>
+              <Zap className="size-3.5 text-amber-500" />
+            </div>
+            <div className="text-xl font-extrabold text-foreground tabular-nums">
+              {sendingSends + queuedSends} <span className="text-xs font-normal text-muted-foreground">emails</span>
+            </div>
+            <p className="text-[11px] text-muted-foreground">{sendingSends} sending · {queuedSends} queued</p>
+          </div>
+
+          <div className="rounded-lg border border-border/80 bg-muted/30 p-3 space-y-1">
+            <div className="flex items-center justify-between text-muted-foreground font-semibold">
+              <span>Scheduled Queue</span>
+              <Clock className="size-3.5 text-purple-500" />
+            </div>
+            <div className="text-xl font-extrabold text-purple-600 dark:text-purple-400 tabular-nums">
+              {scheduledCampaigns} <span className="text-xs font-normal text-muted-foreground">campaigns</span>
+            </div>
+            <p className="text-[11px] text-muted-foreground">Auto-delivers on schedule</p>
+          </div>
+
+          <div className="rounded-lg border border-border/80 bg-muted/30 p-3 space-y-1">
+            <div className="flex items-center justify-between text-muted-foreground font-semibold">
+              <span>Failed Sends</span>
+              <AlertCircle className="size-3.5 text-destructive" />
+            </div>
+            <div className="text-xl font-extrabold text-destructive tabular-nums">
+              {failedSends.length} <span className="text-xs font-normal text-muted-foreground">errors</span>
+            </div>
+            <p className="text-[11px] text-muted-foreground">Retryable with 1-click</p>
+          </div>
+
+          <div className="rounded-lg border border-border/80 bg-muted/30 p-3 space-y-1">
+            <div className="flex items-center justify-between text-muted-foreground font-semibold">
+              <span>Success Delivered</span>
+              <CheckCircle2 className="size-3.5 text-emerald-500" />
+            </div>
+            <div className="text-xl font-extrabold text-emerald-600 dark:text-emerald-400 tabular-nums">
+              {totalSentSuccess} <span className="text-xs font-normal text-muted-foreground">delivered</span>
+            </div>
+            <p className="text-[11px] text-muted-foreground">100% tracked</p>
+          </div>
+        </div>
+      </Card>
 
       {/* Campaigns Table / Skeleton */}
       {isLoading ? (
