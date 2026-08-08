@@ -357,10 +357,14 @@ function ComposerPage() {
               dailyCap={settings?.daily_cap || 100}
               monthlyCap={settings?.monthly_cap || 3000}
               senderConfigured={senderConfigured}
+              senderVerified={senderVerified}
               linkVerified={linkVerified}
-              hasPlainText={Boolean(bodyHtml.trim())}
+              hasPlainText={false}
+              hasSubject={Boolean(subject.trim())}
+              hasBody={Boolean(bodyHtml.replace(/<[^>]*>/g, "").trim())}
               scheduledTime={isScheduling ? scheduledFor : undefined}
             />
+
 
             {isScheduling && (
               <div className="space-y-2 rounded-lg border border-border p-3.5 bg-muted/20">

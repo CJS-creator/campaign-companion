@@ -268,20 +268,45 @@ export const importLeads = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const { db, user } = await guard();
-    const rows = data.rows.map((row) => ({
-      email: row.email.toLowerCase(),
-      name: row.name || null,
-    }));
-    const emails = rows.map((r) => r.email);
 
+    // Normalise and collapse duplicates inside the uploaded file itself.
+    const seen = new Set<string>();
+    let invalid = 0;
+    let inFileDuplicates = 0;
+    const rows: Array<{ email: string; name: string | null }> = [];
+    for (const row of data.rows) {
+      const email = row.email.trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(email)) {
+        invalid += 1;
+        continue;
+      }
+      if (seen.has(email)) {
+        inFileDuplicates += 1;
+        continue;
+      }
+      seen.add(email);
+      rows.push({ email, name: row.name?.trim() || null });
+    }
+
+    if (rows.length === 0) {
+      return { added: 0, duplicates: inFileDuplicates, invalid, suppressed: 0 };
+    }
+
+    const emails = rows.map((r) => r.email);
     const known = new Set<string>();
+    const suppressed = new Set<string>();
     for (let i = 0; i < emails.length; i += 500) {
       const { data: existing, error } = await db
         .from("leads")
-        .select("email")
+        .select("email, suppression_status")
         .in("email", emails.slice(i, i + 500));
       if (error) throw new Error(error.message);
-      for (const row of existing ?? []) known.add(row.email);
+      for (const row of existing ?? []) {
+        known.add(row.email);
+        if (row.suppression_status && row.suppression_status !== "active") {
+          suppressed.add(row.email);
+        }
+      }
     }
 
     const fresh = rows.filter((r) => !known.has(r.email));
@@ -299,9 +324,17 @@ export const importLeads = createServerFn({ method: "POST" })
       if (error) throw new Error(error.message);
       added += chunk.length;
     }
-    await audit(user.userId, "leads_imported", { added, duplicates: rows.length - fresh.length });
-    return { added, duplicates: rows.length - fresh.length };
+
+    const duplicates = rows.length - fresh.length + inFileDuplicates;
+    await audit(user.userId, "leads_imported", {
+      added,
+      duplicates,
+      invalid,
+      suppressed: suppressed.size,
+    });
+    return { added, duplicates, invalid, suppressed: suppressed.size };
   });
+
 
 /* ------------------------------- campaigns ------------------------------ */
 
